@@ -2,11 +2,9 @@
 
 **Research-only** | **Diagnostic-only** | **Baseline ML-only** | **No trading authority**
 
-This repository is the dedicated HackAIthon 2026 MVP workspace for VSEF: a baseline ML model diagnostic framework for a Vietcombank-facing stock evaluation use case.
+This repository is the dedicated HackAIthon 2026 MVP workspace for VSEF: a baseline ML model diagnostic framework for a banking stock-evaluation use case.
 
-Vietcombank is used only as the product-facing banking evaluation context for this HackAIthon use case. This does not imply Vietcombank sponsorship, deployment, approval, endorsement, or partnership.
-
-Viettel Global remains separate as research attribution for the underlying research work only.
+The banking name is used only as the project subject for the HackAIthon use case.
 
 ## What This MVP Is
 
@@ -72,7 +70,7 @@ python -m pytest tests/hackaithon_mvp -q
 Expected local result:
 
 ```text
-49 passed
+76 passed
 ```
 
 ## How to Run One Static Engine
@@ -161,3 +159,4 @@ Forecast Diagnostic Engine
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
+
