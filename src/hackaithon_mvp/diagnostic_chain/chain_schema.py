@@ -103,6 +103,9 @@ class QuantCoreOutput(TypedDict):
     engine_count_checked: int
     completed_count: int
     skipped_missing_evidence_count: int
+    forecast_diagnostic_engine_enabled: bool
+    forecast_diagnostic_counts: dict[str, int]
+    forecast_diagnostic_sample: list[dict[str, Any]]
     warnings: list[str]
     non_claim: str
 
