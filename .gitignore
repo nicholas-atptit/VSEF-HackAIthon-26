@@ -1,0 +1,22 @@
+﻿# HackAIthon MVP generated catalogs
+catalogs/hackaithon_mvp/*_engine_catalog.jsonl
+!catalogs/hackaithon_mvp/samples/*_sample.jsonl
+!catalogs/hackaithon_mvp/*_summary.md
+!catalogs/hackaithon_mvp/catalog_generation_manifest.json
+
+# Generated packages
+packaged_docs/*.zip
+*.zip
+
+# Runtime outputs
+outputs/
+data/
+cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local environments
+.env
+.venv/
+*.egg-info/

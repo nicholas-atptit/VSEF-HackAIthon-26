@@ -1,0 +1,128 @@
+{
+  "package_name": "VSEF_HackAIthon_26_Docs_Package",
+  "created_at": "2026-06-19T22:53:30+07:00",
+  "source_repository": "VSEF-HackAIthon-26 working tree",
+  "documentation_only": true,
+  "included_files": [
+    {
+      "file": "submission/VSEF - HackAIthon 26.md",
+      "source": "VSEF - HackAIthon 26.md",
+      "source_kind": "root"
+    },
+    {
+      "file": "workspace_planning/HACKAITHON_26_WORKSPACE.md",
+      "source": "HACKAITHON_26_WORKSPACE.md",
+      "source_kind": "root"
+    },
+    {
+      "file": "workspace_planning/MVP_AUDIT_AND_BUILD_PLAN.md",
+      "source": "MVP_AUDIT_AND_BUILD_PLAN.md",
+      "source_kind": "root"
+    },
+    {
+      "file": "workspace_planning/MODEL_INVENTORY_FROM_LEGACY.md",
+      "source": "docs/hackaithon_mvp/MODEL_INVENTORY_FROM_LEGACY.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "workspace_planning/MVP_ENGINE_SPEC.md",
+      "source": "docs/hackaithon_mvp/MVP_ENGINE_SPEC.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "workspace_planning/IMPLEMENTATION_PLAN.md",
+      "source": "docs/hackaithon_mvp/IMPLEMENTATION_PLAN.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "original_reference/README.md",
+      "source": "README.md",
+      "source_kind": "root"
+    },
+    {
+      "file": "original_reference/REPOSITORY_STRUCTURE.md",
+      "source": "docs/architecture/REPOSITORY_STRUCTURE.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "original_reference/CLAIM_BOUNDARY_POLICY.md",
+      "source": "docs/governance/CLAIM_BOUNDARY_POLICY.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "original_reference/DATA_AND_ARTIFACT_POLICY.md",
+      "source": "docs/governance/DATA_AND_ARTIFACT_POLICY.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "original_reference/RESEARCH_WORKFLOW.md",
+      "source": "docs/workflows/RESEARCH_WORKFLOW.md",
+      "source_kind": "docs"
+    },
+    {
+      "file": "runbooks/RUNBOOK.md",
+      "source": "generated during packaging",
+      "source_kind": "generated"
+    },
+    {
+      "file": "evidence_reference/ACTIVE_EVIDENCE_INDEX.md",
+      "source": "generated during packaging",
+      "source_kind": "generated"
+    },
+    {
+      "file": "evidence_reference/audit_result.md",
+      "source": "reports/generated/vn30_model_universe_benchmark/audit_result.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/model_universe_claim_boundary.md",
+      "source": "reports/generated/vn30_model_universe_benchmark/model_universe_claim_boundary.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/claim_register.md",
+      "source": "reports/generated/vn30_model_universe_benchmark/claim_register.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_FULL_MODEL_TUNING_V3_RESULT_SUMMARY.md",
+      "source": "reports/results/VN30_FULL_MODEL_TUNING_V3_RESULT_SUMMARY.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_MODEL_UNIVERSE_V1_V6_CLOSEOUT_REPORT.md",
+      "source": "reports/results/VN30_MODEL_UNIVERSE_V1_V6_CLOSEOUT_REPORT.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_MODEL_UNIVERSE_V6_PRICE_RETURN_ABSOLUTE_CONFIRMATION_RESULT_SUMMARY.md",
+      "source": "reports/results/VN30_MODEL_UNIVERSE_V6_PRICE_RETURN_ABSOLUTE_CONFIRMATION_RESULT_SUMMARY.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_FULL_MODEL_TUNING_V3_CLAIM_BOUNDARY.md",
+      "source": "reports/claims/VN30_FULL_MODEL_TUNING_V3_CLAIM_BOUNDARY.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_MODEL_UNIVERSE_V1_V6_FINAL_CLAIM_BOUNDARY.md",
+      "source": "reports/claims/VN30_MODEL_UNIVERSE_V1_V6_FINAL_CLAIM_BOUNDARY.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "evidence_reference/VN30_MODEL_UNIVERSE_V6_PRICE_RETURN_ABSOLUTE_CONFIRMATION_CLAIM_BOUNDARY.md",
+      "source": "reports/claims/VN30_MODEL_UNIVERSE_V6_PRICE_RETURN_ABSOLUTE_CONFIRMATION_CLAIM_BOUNDARY.md",
+      "source_kind": "reports"
+    },
+    {
+      "file": "audit/README.md",
+      "source": "generated during packaging",
+      "source_kind": "generated"
+    },
+    {
+      "file": "INDEX.md",
+      "source": "generated during packaging",
+      "source_kind": "generated"
+    }
+  ]
+}

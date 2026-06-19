@@ -1,0 +1,10 @@
+{
+  "baseline_engine_count": 32850,
+  "catalogs_are_generated_artifacts": true,
+  "data_gateway_excluded": true,
+  "full_jsonl_catalogs_are_not_tracked": true,
+  "generation_command": "python -m src.hackaithon_mvp.engine_catalog.catalog_writer",
+  "qml_excluded": true,
+  "stack_engine_count": 22500,
+  "support_engine_count": 22500
+}
