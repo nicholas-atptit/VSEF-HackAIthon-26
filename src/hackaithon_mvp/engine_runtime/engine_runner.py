@@ -18,6 +18,11 @@ from .engine_spec import EngineSpec
 from .output_store import EngineOutputStore
 
 
+def _spec_timeframe(spec: EngineSpec) -> str | None:
+    value = spec.timeframe or spec.metadata.get("timeframe")
+    return str(value) if value is not None else None
+
+
 def _matched_static_evidence(spec: EngineSpec, records: list[dict[str, object]]) -> list[dict[str, object]]:
     return [
         record
@@ -31,7 +36,16 @@ def _matched_static_evidence(spec: EngineSpec, records: list[dict[str, object]])
 def _baseline_result(spec: EngineSpec, evidence_records: list[dict[str, object]] | None) -> EngineResult:
     records = evidence_records if evidence_records is not None else load_static_evidence()
     matches = _matched_static_evidence(spec, records)
+    timeframe = _spec_timeframe(spec)
     if not matches:
+        metadata = {
+            "run_mode": spec.run_mode,
+            "model_key": spec.model_key,
+            "target": spec.target,
+            "horizon": spec.horizon,
+        }
+        if timeframe is not None:
+            metadata["timeframe"] = timeframe
         return EngineResult(
             engine_id=spec.engine_id,
             status="skipped_missing_evidence",
@@ -41,15 +55,21 @@ def _baseline_result(spec: EngineSpec, evidence_records: list[dict[str, object]]
             metrics={"matched_static_records": 0},
             claim_scope="evidence_insufficient",
             warnings=("no matching static evidence for model target horizon",),
-            metadata={
-                "run_mode": spec.run_mode,
-                "model_key": spec.model_key,
-                "target": spec.target,
-                "horizon": spec.horizon,
-            },
+            metadata=metadata,
+            timeframe=timeframe,
         )
 
     label = "exploratory_only" if spec.claim_scope == "exploratory_only" else "neutral_or_uncertain"
+    metadata = {
+        "run_mode": spec.run_mode,
+        "model_key": spec.model_key,
+        "model_family": spec.model_family,
+        "target": spec.target,
+        "horizon": spec.horizon,
+        "matched_record_ids": [str(record.get("record_id")) for record in matches],
+    }
+    if timeframe is not None:
+        metadata["timeframe"] = timeframe
     return EngineResult(
         engine_id=spec.engine_id,
         status="completed",
@@ -59,14 +79,8 @@ def _baseline_result(spec: EngineSpec, evidence_records: list[dict[str, object]]
         metrics={"matched_static_records": len(matches)},
         claim_scope=spec.claim_scope,
         warnings=("static MVP result uses local sample evidence only",),
-        metadata={
-            "run_mode": spec.run_mode,
-            "model_key": spec.model_key,
-            "model_family": spec.model_family,
-            "target": spec.target,
-            "horizon": spec.horizon,
-            "matched_record_ids": [str(record.get("record_id")) for record in matches],
-        },
+        metadata=metadata,
+        timeframe=timeframe,
     )
 
 
@@ -75,7 +89,11 @@ def _dependency_result(
     dependency_results: Mapping[str, EngineResult | dict[str, object]] | None,
 ) -> EngineResult:
     missing = missing_dependencies(spec, dependency_results)
+    timeframe = _spec_timeframe(spec)
     if missing:
+        metadata = {"run_mode": spec.run_mode, "engine_type": spec.engine_type}
+        if timeframe is not None:
+            metadata["timeframe"] = timeframe
         return EngineResult(
             engine_id=spec.engine_id,
             status="skipped_missing_dependency",
@@ -86,10 +104,14 @@ def _dependency_result(
             dependencies_used=dependency_lineage(spec, dependency_results),
             claim_scope="evidence_insufficient",
             warnings=("required dependency outputs are unavailable",),
-            metadata={"run_mode": spec.run_mode, "engine_type": spec.engine_type},
+            metadata=metadata,
+            timeframe=timeframe,
         )
 
     used = dependency_lineage(spec, dependency_results)
+    metadata = {"run_mode": spec.run_mode, "engine_type": spec.engine_type}
+    if timeframe is not None:
+        metadata["timeframe"] = timeframe
     return EngineResult(
         engine_id=spec.engine_id,
         status="completed",
@@ -100,7 +122,8 @@ def _dependency_result(
         dependencies_used=used,
         claim_scope=spec.claim_scope,
         warnings=("static MVP dependency result only",),
-        metadata={"run_mode": spec.run_mode, "engine_type": spec.engine_type},
+        metadata=metadata,
+        timeframe=timeframe,
     )
 
 

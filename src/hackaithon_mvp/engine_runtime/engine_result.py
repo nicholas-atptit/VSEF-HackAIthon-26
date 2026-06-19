@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.hackaithon_mvp.timeframe_schema import normalize_timeframe
+
 from .engine_id import assert_no_forbidden_terms, validate_engine_id
 from .engine_spec import ALLOWED_CLAIM_SCOPES, _walk_strings
 
@@ -45,6 +47,7 @@ class EngineResult:
     non_claim: str = DEFAULT_NON_CLAIM
     warnings: tuple[str, ...] = field(default_factory=tuple)
     metadata: dict[str, Any] = field(default_factory=dict)
+    timeframe: str | None = None
 
     def __post_init__(self) -> None:
         validate_engine_id(self.engine_id)
@@ -60,6 +63,12 @@ class EngineResult:
             value = getattr(self, attr)
             if not isinstance(value, tuple):
                 object.__setattr__(self, attr, tuple(value))
+        if self.timeframe is not None:
+            object.__setattr__(self, "timeframe", normalize_timeframe(str(self.timeframe)))
+        metadata = dict(self.metadata)
+        if "timeframe" in metadata and metadata["timeframe"] is not None:
+            metadata["timeframe"] = normalize_timeframe(str(metadata["timeframe"]))
+            object.__setattr__(self, "metadata", metadata)
         for field_name in ("non_claim",):
             assert_no_forbidden_terms(getattr(self, field_name), field_name=field_name)
         for index, value in enumerate(self.risk_flags):
@@ -74,7 +83,7 @@ class EngineResult:
             assert_no_forbidden_terms(text, field_name="metadata")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "engine_id": self.engine_id,
             "status": self.status,
             "diagnostic_label": self.diagnostic_label,
@@ -87,6 +96,9 @@ class EngineResult:
             "warnings": list(self.warnings),
             "metadata": self.metadata,
         }
+        if self.timeframe is not None:
+            payload["timeframe"] = self.timeframe
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EngineResult":

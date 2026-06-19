@@ -6,6 +6,8 @@ import argparse
 import json
 from typing import Any
 
+from src.hackaithon_mvp.timeframe_schema import normalize_timeframe
+
 from .calibration_engine import run_calibration
 from .chain_schema import DiagnosticChainOutput, NON_CLAIM_TEXT, assert_no_forbidden_public_terms
 from .decision_lane_engine import run_decision_lane
@@ -18,9 +20,10 @@ from .risk_governance_engine import run_risk_governance
 from .scenario_engine import run_scenario_engine
 
 
-def run_diagnostic_chain(ticker: str, sample_size: int = 500) -> dict[str, Any]:
+def run_diagnostic_chain(ticker: str, sample_size: int = 500, timeframe: str = "1d") -> dict[str, Any]:
     normalized_ticker = ticker.strip().upper()
-    quant_output = run_quant_core(normalized_ticker, sample_size=sample_size)
+    canonical_timeframe = normalize_timeframe(timeframe)
+    quant_output = run_quant_core(normalized_ticker, sample_size=sample_size, timeframe=canonical_timeframe)
     scenario_output = run_scenario_engine(quant_output)
     risk_output = run_risk_governance(quant_output, scenario_output)
     decision_output = run_decision_lane(quant_output, scenario_output, risk_output)
@@ -52,6 +55,7 @@ def run_diagnostic_chain(ticker: str, sample_size: int = 500) -> dict[str, Any]:
         layer_8_phase_router=router_output,
         non_claim=NON_CLAIM_TEXT,
     ).to_dict()
+    chain_output["timeframe"] = canonical_timeframe
     assert_no_forbidden_public_terms(chain_output)
     return chain_output
 
@@ -60,12 +64,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the HackAIthon MVP diagnostic decision chain.")
     parser.add_argument("--ticker", required=True)
     parser.add_argument("--sample-size", type=int, default=500)
+    parser.add_argument("--timeframe", default="1d")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
-    output = run_diagnostic_chain(args.ticker, sample_size=args.sample_size)
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    try:
+        output = run_diagnostic_chain(args.ticker, sample_size=args.sample_size, timeframe=args.timeframe)
+    except ValueError as exc:
+        parser.error(str(exc))
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 

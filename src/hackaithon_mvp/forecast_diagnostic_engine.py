@@ -13,6 +13,7 @@ from src.hackaithon_mvp.engine_runtime.engine_result import EngineResult
 from src.hackaithon_mvp.engine_runtime.engine_runner import run_engine
 from src.hackaithon_mvp.engine_runtime.engine_spec import EngineSpec
 from src.hackaithon_mvp.static_evidence_loader import StaticEvidenceValidationError, load_static_evidence
+from src.hackaithon_mvp.timeframe_schema import normalize_timeframe
 
 
 FORECAST_DIAGNOSTIC_LABELS = frozenset(
@@ -149,6 +150,29 @@ def _extract_identity(engine_payload: dict[str, Any], evidence_record: dict[str,
     }
 
 
+def _extract_timeframe(
+    engine_payload: dict[str, Any],
+    evidence_record: dict[str, Any] | None,
+    adapter_metadata: dict[str, Any] | None,
+    baseline_summary: dict[str, Any] | None,
+) -> str | None:
+    engine_metadata = _nested_dict(engine_payload, "metadata")
+    sources = (
+        engine_payload,
+        engine_metadata,
+        evidence_record or {},
+        _nested_dict(evidence_record or {}, "metadata"),
+        adapter_metadata or {},
+        baseline_summary or {},
+        _nested_dict(baseline_summary or {}, "metadata"),
+    )
+    for source in sources:
+        value = source.get("timeframe")
+        if value is not None:
+            return normalize_timeframe(str(value))
+    return None
+
+
 def _confidence(value: float, baseline_summary: dict[str, Any] | None) -> float:
     bounded = max(0.0, min(float(value), 1.0))
     if baseline_summary is None:
@@ -169,6 +193,7 @@ def _result(
     claim_scope: str,
     baseline_summary: dict[str, Any] | None,
     warnings: list[str],
+    timeframe: str | None,
 ) -> dict[str, Any]:
     if forecast_diagnostic not in FORECAST_DIAGNOSTIC_LABELS:
         raise ValueError(f"unsupported forecast_diagnostic: {forecast_diagnostic}")
@@ -178,7 +203,7 @@ def _result(
         raise ValueError(f"unsupported evidence_status: {evidence_status}")
 
     identity = _extract_identity(engine_payload, evidence_record)
-    return {
+    output = {
         **identity,
         "forecast_diagnostic": forecast_diagnostic,
         "confidence": _confidence(confidence, baseline_summary),
@@ -191,6 +216,9 @@ def _result(
         "non_claim": NON_CLAIM_TEXT,
         "warnings": warnings,
     }
+    if timeframe is not None:
+        output["timeframe"] = timeframe
+    return output
 
 
 def run_forecast_diagnostic(
@@ -212,6 +240,7 @@ def run_forecast_diagnostic(
         claim_scope_value = adapter_payload.get("claim_scope", "diagnostic_only")
     claim_scope = str(claim_scope_value)
     warnings = list(engine_payload.get("warnings", []) or [])
+    timeframe = _extract_timeframe(engine_payload, evidence_payload, adapter_payload, baseline_payload)
 
     if engine_payload.get("status") == "skipped_missing_evidence":
         warnings.append("static evidence missing for engine result")
@@ -227,6 +256,7 @@ def run_forecast_diagnostic(
             claim_scope="evidence_insufficient",
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
 
     if evidence_payload is None:
@@ -243,6 +273,7 @@ def run_forecast_diagnostic(
             claim_scope="evidence_insufficient",
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
 
     metrics = _metric_pool(engine_payload, evidence_payload, baseline_payload)
@@ -264,6 +295,7 @@ def run_forecast_diagnostic(
             claim_scope="exploratory_only",
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
 
     if primary_metric is None:
@@ -280,6 +312,7 @@ def run_forecast_diagnostic(
             claim_scope=claim_scope,
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
 
     if baseline_metric is None:
@@ -296,6 +329,7 @@ def run_forecast_diagnostic(
             claim_scope=claim_scope,
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
 
     edge = primary_metric - baseline_metric
@@ -312,6 +346,7 @@ def run_forecast_diagnostic(
             claim_scope=claim_scope,
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
     if edge >= MEANINGFUL_EDGE_THRESHOLD:
         return _result(
@@ -326,6 +361,7 @@ def run_forecast_diagnostic(
             claim_scope=claim_scope,
             baseline_summary=baseline_payload,
             warnings=warnings,
+            timeframe=timeframe,
         )
     if edge >= WEAK_EDGE_THRESHOLD:
         baseline_status = "weak_edge"
@@ -345,6 +381,7 @@ def run_forecast_diagnostic(
         claim_scope=claim_scope,
         baseline_summary=baseline_payload,
         warnings=warnings,
+        timeframe=timeframe,
     )
 
 
@@ -382,29 +419,43 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--engine-id", required=True)
     parser.add_argument("--catalog-dir", default=None)
     parser.add_argument("--evidence-path", default=None)
+    parser.add_argument("--timeframe", default=None)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    adapter_metadata = {"timeframe": args.timeframe} if args.timeframe is not None else None
     records = _load_records(args.evidence_path)
     spec = _resolve_spec(args.engine_id, args.catalog_dir)
     if spec is None:
-        diagnostic = run_forecast_diagnostic(
-            {
-                "engine_id": args.engine_id,
-                "status": "skipped_missing_evidence",
-                "claim_scope": "evidence_insufficient",
-                "warnings": ["engine spec unavailable in static generated catalog"],
-            },
-            evidence_record=None,
-        )
+        try:
+            diagnostic = run_forecast_diagnostic(
+                {
+                    "engine_id": args.engine_id,
+                    "status": "skipped_missing_evidence",
+                    "claim_scope": "evidence_insufficient",
+                    "warnings": ["engine spec unavailable in static generated catalog"],
+                },
+                evidence_record=None,
+                adapter_metadata=adapter_metadata,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         print(json.dumps(diagnostic, indent=2, sort_keys=True))
         return 0
 
     evidence_record = _matching_evidence(spec, records)
     result = run_engine(spec, evidence_records=records)
-    diagnostic = run_forecast_diagnostic(result.to_dict(), evidence_record=evidence_record)
+    try:
+        diagnostic = run_forecast_diagnostic(
+            result.to_dict(),
+            evidence_record=evidence_record,
+            adapter_metadata=adapter_metadata,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     print(json.dumps(diagnostic, indent=2, sort_keys=True))
     return 0
 

@@ -26,6 +26,15 @@ def test_engine_runner_completes_static_evidence_baseline():
     assert result.metrics["matched_static_records"] >= 1
 
 
+def test_engine_runner_preserves_optional_timeframe_metadata():
+    spec = _baseline_spec()
+    spec = EngineSpec(**{**spec.to_dict(), "timeframe": "1 ngày"})
+    result = run_engine(spec)
+    assert result.timeframe == "1d"
+    assert result.to_dict()["timeframe"] == "1d"
+    assert result.metadata["timeframe"] == "1d"
+
+
 def test_engine_runner_skips_missing_static_evidence():
     result = run_engine(_baseline_spec(horizon=1))
     assert result.status == "skipped_missing_evidence"

@@ -98,6 +98,8 @@ NON_CLAIM_TEXT = "Research diagnostic only; static local evidence boundary appli
 
 class QuantCoreOutput(TypedDict):
     ticker: str
+    timeframe: str
+    timeframe_unit: str
     quant_signal: str
     consensus_strength: float
     engine_count_checked: int

@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .timeframe_schema import normalize_timeframe
 from .model_diagnostics.inventory import EXCLUDED_FROM_MVP
 from .model_diagnostics.registry import get_adapter
 
@@ -54,6 +55,11 @@ def validate_evidence_record(record: dict[str, Any]) -> dict[str, Any]:
             )
 
     validated = dict(record)
+    if "timeframe" in validated and validated["timeframe"] is not None:
+        try:
+            validated["timeframe"] = normalize_timeframe(str(validated["timeframe"]))
+        except ValueError as exc:
+            raise StaticEvidenceValidationError(str(exc)) from exc
     validated["adapter_dependency_status"] = metadata["dependency_status"]
     validated["adapter_is_exploratory"] = metadata["is_exploratory"]
     return validated

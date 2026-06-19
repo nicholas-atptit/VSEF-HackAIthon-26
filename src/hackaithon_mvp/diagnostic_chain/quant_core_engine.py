@@ -9,6 +9,7 @@ from src.hackaithon_mvp.engine_runtime.engine_runner import run_engine
 from src.hackaithon_mvp.engine_runtime.engine_spec import EngineSpec
 from src.hackaithon_mvp.forecast_diagnostic_engine import FORECAST_DIAGNOSTIC_LABELS, run_forecast_diagnostic
 from src.hackaithon_mvp.static_evidence_loader import load_static_evidence
+from src.hackaithon_mvp.timeframe_schema import normalize_timeframe, timeframe_unit
 
 from .chain_schema import (
     ALLOWED_QUANT_SIGNALS,
@@ -96,19 +97,23 @@ def _summarize_forecast_signal(diagnostic_counts: Counter[str]) -> str:
 
 
 def _diagnostic_sample_item(diagnostic: dict[str, object]) -> dict[str, object]:
-    return {
+    item = {
         "engine_id": diagnostic.get("engine_id"),
         "forecast_diagnostic": diagnostic.get("forecast_diagnostic"),
         "baseline_status": diagnostic.get("baseline_status"),
         "evidence_status": diagnostic.get("evidence_status"),
         "confidence": diagnostic.get("confidence"),
     }
+    if diagnostic.get("timeframe") is not None:
+        item["timeframe"] = diagnostic.get("timeframe")
+    return item
 
 
-def run_quant_core(ticker: str, sample_size: int = MAX_BASELINE_SAMPLE_SIZE) -> QuantCoreOutput:
+def run_quant_core(ticker: str, sample_size: int = MAX_BASELINE_SAMPLE_SIZE, timeframe: str = "1d") -> QuantCoreOutput:
     """Run a bounded set of generated baseline specs against local sample evidence."""
 
     normalized_ticker = ticker.strip().upper()
+    canonical_timeframe = normalize_timeframe(timeframe)
     bounded_sample_size = max(0, min(int(sample_size), MAX_BASELINE_SAMPLE_SIZE))
     records = load_static_evidence()
     ticker_records = [record for record in records if str(record.get("ticker", "")).upper() == normalized_ticker]
@@ -124,7 +129,11 @@ def run_quant_core(ticker: str, sample_size: int = MAX_BASELINE_SAMPLE_SIZE) -> 
     for spec in selected_specs:
         result = run_engine(spec, evidence_records=ticker_records)
         evidence_record = next((record for record in ticker_records if _matches_record(spec, record)), None)
-        diagnostic = run_forecast_diagnostic(result.to_dict(), evidence_record=evidence_record)
+        diagnostic = run_forecast_diagnostic(
+            result.to_dict(),
+            evidence_record=evidence_record,
+            adapter_metadata={"timeframe": canonical_timeframe},
+        )
         forecast_label = str(diagnostic["forecast_diagnostic"])
         forecast_diagnostic_counts[forecast_label] += 1
         if result.status == "completed" and len(forecast_diagnostic_sample) < MAX_FORECAST_DIAGNOSTIC_SAMPLE:
@@ -157,6 +166,8 @@ def run_quant_core(ticker: str, sample_size: int = MAX_BASELINE_SAMPLE_SIZE) -> 
 
     output: QuantCoreOutput = {
         "ticker": normalized_ticker,
+        "timeframe": canonical_timeframe,
+        "timeframe_unit": timeframe_unit(canonical_timeframe),
         "quant_signal": quant_signal,
         "consensus_strength": round(completed_count / checked_count, 6) if checked_count else 0.0,
         "engine_count_checked": checked_count,

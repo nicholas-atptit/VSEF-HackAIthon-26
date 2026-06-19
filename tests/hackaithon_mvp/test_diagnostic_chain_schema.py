@@ -32,6 +32,8 @@ def test_diagnostic_chain_output_dataclass_serializes_nested_layers():
         ticker="VCB",
         layer_1_quant_core={
             "ticker": "VCB",
+            "timeframe": "1d",
+            "timeframe_unit": "day",
             "quant_signal": "neutral_or_uncertain",
             "consensus_strength": 0.1,
             "engine_count_checked": 10,

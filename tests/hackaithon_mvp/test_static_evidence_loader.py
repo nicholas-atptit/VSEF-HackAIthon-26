@@ -40,6 +40,17 @@ def test_missing_dependency_metadata_record_is_allowed_when_static_only():
     assert validated["adapter_dependency_status"] == "missing_dependency"
 
 
+def test_static_evidence_record_accepts_optional_timeframe_metadata():
+    record = {
+        "model_key": "logistic_l2",
+        "model_family": "classification",
+        "model_display_name": "Logistic L2",
+        "timeframe": "1 ngày",
+    }
+    validated = validate_evidence_record(record)
+    assert validated["timeframe"] == "1d"
+
+
 def test_dependency_gated_record_requires_metadata_only_mode():
     with pytest.raises(StaticEvidenceValidationError):
         validate_evidence_record(

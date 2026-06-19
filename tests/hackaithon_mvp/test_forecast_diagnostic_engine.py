@@ -124,3 +124,13 @@ def test_forecast_diagnostic_output_has_no_forbidden_action_language():
         baseline_summary={"baseline_accuracy": 0.53},
     )
     _assert_no_forbidden_public_terms(output)
+
+
+def test_forecast_diagnostic_preserves_timeframe_from_metadata_sources():
+    output = run_forecast_diagnostic(
+        _engine_result(),
+        evidence_record=_evidence(accuracy=0.56, baseline_accuracy=0.53),
+        adapter_metadata={"timeframe": "1 ngày"},
+        baseline_summary={"baseline_accuracy": 0.53},
+    )
+    assert output["timeframe"] == "1d"

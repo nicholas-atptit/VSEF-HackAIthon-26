@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.hackaithon_mvp.timeframe_schema import normalize_timeframe
+
 from .engine_id import EngineIdValidationError, assert_no_forbidden_terms, validate_engine_id
 
 
@@ -42,6 +44,7 @@ class EngineSpec:
     dependencies: tuple[str, ...] = field(default_factory=tuple)
     claim_scope: str = "diagnostic_only"
     metadata: dict[str, Any] = field(default_factory=dict)
+    timeframe: str | None = None
 
     def __post_init__(self) -> None:
         parsed_type = validate_engine_id(self.engine_id)
@@ -59,6 +62,12 @@ class EngineSpec:
             raise ValueError("baseline specs require model_key and model_family")
         if not isinstance(self.dependencies, tuple):
             object.__setattr__(self, "dependencies", tuple(self.dependencies))
+        if self.timeframe is not None:
+            object.__setattr__(self, "timeframe", normalize_timeframe(str(self.timeframe)))
+        metadata = dict(self.metadata)
+        if "timeframe" in metadata and metadata["timeframe"] is not None:
+            metadata["timeframe"] = normalize_timeframe(str(metadata["timeframe"]))
+            object.__setattr__(self, "metadata", metadata)
         for field_name in ("model_key", "model_family", "target", "feature_set", "policy", "split_policy"):
             value = getattr(self, field_name)
             if value is not None:
@@ -69,7 +78,7 @@ class EngineSpec:
             assert_no_forbidden_terms(text, field_name="metadata")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "engine_id": self.engine_id,
             "engine_type": self.engine_type,
             "model_key": self.model_key,
@@ -84,6 +93,9 @@ class EngineSpec:
             "claim_scope": self.claim_scope,
             "metadata": self.metadata,
         }
+        if self.timeframe is not None:
+            payload["timeframe"] = self.timeframe
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EngineSpec":
