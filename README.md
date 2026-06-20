@@ -38,6 +38,7 @@ Current scope:
 | Evidence Packet + Diagnostic Routing Report | Implemented | Compact reviewer-facing packet/report after the diagnostic chain |
 | Data Readiness Contract | Implemented | Future database/storage requirements audit only; no database implemented yet |
 | Storage Adapter / Database Design Decision | Implemented | Local Parquet dataset design with DuckDB-compatible query adapter planned; no database implemented yet |
+| Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
 | Dashboard/API | Later | After diagnostic chain is stable |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -73,7 +74,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-199 passed
+221 passed
 ```
 
 ## How to Run One Static Engine
@@ -132,6 +133,7 @@ This MVP is bounded by the following rules:
 * baseline ML-only MVP scope
 * Data Gateway excluded for now
 * database/storage adapter excluded for now
+* real accuracy requires local actual data input
 * no live data
 * no provider API calls
 * no model training
