@@ -64,3 +64,7 @@ models/
 tests/test_pilot_avg_accuracy_non_qml.py
 tests/test_vn30_full_pilot_nonqml.py
 tests/test_vn30_full_pilot_vi_package.py
+
+# Local legacy experiment configs/scripts excluded from public MVP snapshot
+configs/
+scripts/
