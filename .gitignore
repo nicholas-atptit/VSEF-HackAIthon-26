@@ -26,12 +26,14 @@ outputs/
 artifacts/
 reports/generated/
 reports/pilot_*/
+reports/**/*.log
 cache/
 
 # Local temporary outputs
 .tmp_*/
 tmp/
 temp/
+archived_loose_docs/
 
 # Local data and large row artifacts
 data/
