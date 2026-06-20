@@ -27,6 +27,7 @@ artifacts/
 reports/generated/
 reports/pilot_*/
 reports/**/*.log
+reports/proposal_feasibility_evidence_pack/
 cache/
 
 # Local temporary outputs
@@ -58,3 +59,8 @@ models/
 *.parquet
 *.feather
 *.jsonl.tmp
+
+# Local legacy pilot scratch tests outside the MVP suite
+tests/test_pilot_avg_accuracy_non_qml.py
+tests/test_vn30_full_pilot_nonqml.py
+tests/test_vn30_full_pilot_vi_package.py
