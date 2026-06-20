@@ -39,6 +39,9 @@ Current scope:
 | Data Readiness Contract | Implemented | Future database/storage requirements audit only; no database implemented yet |
 | Storage Adapter / Database Design Decision | Implemented | Local Parquet dataset design with DuckDB-compatible query adapter planned; no database implemented yet |
 | Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
+| Legacy Forecast-Actual Adapter | Implemented | Converts local legacy row artifacts into the MVP evaluator schema |
+| Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
+| Quant Core Accuracy Optimizer | Implemented | Simulates validation-split diagnostic policies; improvements are coverage-dependent and validation-measured only |
 | Dashboard/API | Later | After diagnostic chain is stable |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -74,8 +77,10 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-221 passed
+269 passed
 ```
+
+Accuracy optimizer results are diagnostic policy simulations over existing local rows. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
 
 ## How to Run One Static Engine
 
