@@ -81,6 +81,19 @@ def _forecast_diagnostic_summary(quant_output: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def _policy_metadata(quant_output: dict[str, Any]) -> dict[str, Any]:
+    policy_fields = (
+        "policy_id",
+        "policy_name",
+        "policy_runtime_status",
+        "pre_policy_forecast_diagnostic",
+        "policy_validation_accuracy",
+        "policy_validation_balanced_accuracy",
+        "policy_validation_coverage",
+    )
+    return {field: quant_output[field] for field in policy_fields if field in quant_output}
+
+
 def _chain_summary(chain_output: dict[str, Any]) -> dict[str, Any]:
     quant_output = chain_output.get("layer_1_quant_core", {})
     scenario_output = chain_output.get("layer_2_scenario", {})
@@ -166,6 +179,7 @@ def build_evidence_packet(chain_output: dict, run_metadata: dict | None = None) 
         "generated_at": generated_at,
         "engine_universe_summary": _engine_universe_summary(quant_output),
         "forecast_diagnostic_summary": _forecast_diagnostic_summary(quant_output),
+        "policy_metadata": _policy_metadata(quant_output),
         "chain_summary": _chain_summary(chain_output),
         "risk_summary": _risk_summary(chain_output),
         "routing_summary": _routing_summary(chain_output),

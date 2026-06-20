@@ -26,6 +26,7 @@ def render_diagnostic_report(packet: dict) -> str:
     risk = packet.get("risk_summary", {})
     routing = packet.get("routing_summary", {})
     engine = packet.get("engine_universe_summary", {})
+    policy = packet.get("policy_metadata", {})
     counts = forecast.get("counts", {}) if isinstance(forecast, dict) else {}
 
     lines = [
@@ -57,14 +58,32 @@ def render_diagnostic_report(packet: dict) -> str:
         "## Routing",
         f"Route: {routing.get('route', 'not_available')}",
         f"Dashboard status: {routing.get('dashboard_status', 'not_available')}",
-        "",
-        "## Evidence Boundary",
-        *_join(packet.get("claim_boundary", [])).split(", "),
-        "",
-        "## Human Review Requirement",
-        f"Human review required: {bool(packet.get('human_review_required', True))}",
-        str(packet.get("non_claim", "Research diagnostic only; human review required.")),
     ]
+    if isinstance(policy, dict) and policy:
+        lines.extend(
+            [
+                "",
+                "## Quant Core Policy",
+                f"Policy ID: {policy.get('policy_id', 'not_available')}",
+                f"Policy name: {policy.get('policy_name', 'not_available')}",
+                f"Runtime status: {policy.get('policy_runtime_status', 'not_available')}",
+                f"Pre-policy diagnostic: {policy.get('pre_policy_forecast_diagnostic', 'not_available')}",
+                f"Validation accuracy: {policy.get('policy_validation_accuracy', 'not_available')}",
+                f"Validation balanced accuracy: {policy.get('policy_validation_balanced_accuracy', 'not_available')}",
+                f"Validation coverage: {policy.get('policy_validation_coverage', 'not_available')}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Evidence Boundary",
+            *_join(packet.get("claim_boundary", [])).split(", "),
+            "",
+            "## Human Review Requirement",
+            f"Human review required: {bool(packet.get('human_review_required', True))}",
+            str(packet.get("non_claim", "Research diagnostic only; human review required.")),
+        ]
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
