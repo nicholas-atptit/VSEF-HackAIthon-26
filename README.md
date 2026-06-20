@@ -39,6 +39,7 @@ Current scope:
 | Evidence Packet + Diagnostic Routing Report | Implemented | Compact reviewer-facing packet/report after the diagnostic chain |
 | Data Readiness Contract | Implemented | Future database/storage requirements audit only; no database implemented yet |
 | Storage Adapter / Database Design Decision | Implemented | Local Parquet dataset design with DuckDB-compatible query adapter planned; no database implemented yet |
+| Local Parquet Storage Adapter | Implemented | Local file adapter for small normalized tables; falls back to JSONL when no Parquet engine is available |
 | Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
 | Legacy Forecast-Actual Adapter | Implemented | Converts local legacy row artifacts into the MVP evaluator schema |
 | Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
@@ -79,7 +80,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-308 passed
+334 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -93,6 +94,20 @@ python -m src.hackaithon_mvp.engine_runtime.engine_runner --engine-id classifica
 This runs a static diagnostic engine lookup.
 
 It does not train a model, run model inference, fetch live data, call provider APIs, or provide action guidance.
+
+## Local Storage Adapter
+
+The MVP includes a local-only storage adapter for small normalized market-bar, diagnostic, evaluation, packet, report, and DAG-run tables.
+
+It writes Parquet-compatible partition paths when a local Parquet engine is available. If no local Parquet engine is installed, it writes JSONL fallback files and reports the actual storage format in the write result.
+
+This is not a database, Data Gateway, provider integration, or live data ingestion layer.
+
+Example:
+
+```powershell
+python -m src.hackaithon_mvp.local_storage.storage_cli --capability
+```
 
 ## Catalog Policy
 
@@ -184,7 +199,7 @@ The current MVP branch has been pushed after local tests passed.
 The next implementation step is:
 
 ```text
-Local Parquet Storage Adapter
+Hybrid Storage Architecture Contract
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
