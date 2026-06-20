@@ -551,6 +551,8 @@ def _sanitize_final_state(state: dict[str, Any]) -> dict[str, Any]:
         "claim_boundary": claim_boundary(),
         "non_claim": NON_CLAIM_TEXT,
     }
+    if "storage_context_metadata" in state:
+        final.update(state["storage_context_metadata"])
     assert_no_forbidden_public_terms(final)
     return final
 
@@ -560,6 +562,7 @@ def execute_diagnostic_dag(
     context: dict,
     *,
     policy: dict | None = None,
+    storage_context: dict | None = None,
 ) -> dict:
     """Execute the diagnostic DAG with static/local handlers only."""
 
@@ -595,6 +598,15 @@ def execute_diagnostic_dag(
     }
     if policy is not None:
         state["policy"] = policy
+    if storage_context is not None:
+        storage_status = str(storage_context.get("storage_context_status", "missing"))
+        market_bar_count = int(storage_context.get("market_bar_count", 0) or 0)
+        state["storage_context"] = dict(storage_context)
+        state["storage_context_metadata"] = {
+            "storage_context_status": storage_status,
+            "market_bar_count": market_bar_count,
+            "local_storage_available": storage_status == "provided" and market_bar_count > 0,
+        }
 
     node_results: list[dict[str, Any]] = []
     audit_trail: list[dict[str, Any]] = []
@@ -690,6 +702,8 @@ def execute_diagnostic_dag(
         "claim_boundary": claim_boundary(),
         "non_claim": NON_CLAIM_TEXT,
     }
+    if failed and "storage_context_metadata" in state:
+        final_state.update(state["storage_context_metadata"])
     result = DAGExecutionResult(
         run_id=execution_context.run_id or "",
         ticker=execution_context.ticker,

@@ -13,6 +13,7 @@ from src.hackaithon_mvp.quant_core_policy_registry import (
 
 from .dag_executor import execute_diagnostic_dag
 from .dag_registry import build_default_diagnostic_dag, summarize_dag
+from .dag_storage_bridge import load_static_context_from_storage, persist_dag_execution
 from .dag_validator import validate_dag
 
 
@@ -35,6 +36,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("json", "report"), default="json")
     parser.add_argument("--show-dag", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--storage-root", default=None)
+    parser.add_argument("--storage-date", default=None)
+    parser.add_argument("--load-storage-context", action="store_true")
+    parser.add_argument("--persist-run", action="store_true")
     return parser
 
 
@@ -49,8 +54,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.validate_only:
         print(json.dumps(validation, indent=2, sort_keys=True))
         return 0 if validation["is_valid"] else 1
+    if (args.load_storage_context or args.persist_run) and not args.storage_root:
+        parser.error("--storage-root is required when storage integration flags are used")
     try:
         policy = _demo_policy(args.policy_demo)
+        storage_context = None
+        if args.load_storage_context:
+            storage_context = load_static_context_from_storage(
+                storage_root=args.storage_root,
+                ticker=args.ticker,
+                timeframe=args.timeframe,
+                date=args.storage_date,
+            )
         result = execute_diagnostic_dag(
             nodes,
             {
@@ -61,7 +76,10 @@ def main(argv: list[str] | None = None) -> int:
                 "policy_name": policy.get("policy_name") if isinstance(policy, dict) else None,
             },
             policy=policy,
+            storage_context=storage_context,
         )
+        if args.persist_run:
+            result["storage_persistence"] = persist_dag_execution(result, storage_root=args.storage_root)
     except ValueError as exc:
         parser.error(str(exc))
     if args.format == "report":
