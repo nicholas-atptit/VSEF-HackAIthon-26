@@ -94,3 +94,21 @@ def test_evidence_packet_includes_forecast_counts_and_final_route():
         "evidence_insufficient",
         "exploratory_only",
     }
+
+
+def test_evidence_packet_preserves_optional_data_readiness_metadata():
+    chain_output = run_diagnostic_chain("VCB", sample_size=20, timeframe="1 ngày")
+    packet = build_evidence_packet(
+        chain_output,
+        run_metadata={
+            "run_id": "unit-run",
+            "data_readiness": {
+                "audit_mode": "data_readiness_contract_only",
+                "coverage_ratio": 0,
+                "database_required": True,
+            },
+        },
+    )
+
+    assert packet["data_readiness"]["audit_mode"] == "data_readiness_contract_only"
+    assert packet["data_readiness"]["database_required"] is True

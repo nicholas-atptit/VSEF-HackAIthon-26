@@ -175,6 +175,8 @@ def build_evidence_packet(chain_output: dict, run_metadata: dict | None = None) 
         "warnings": _list_warnings(chain_output),
         "lineage": _lineage(chain_output),
     }
+    if isinstance(run_metadata, dict) and "data_readiness" in run_metadata:
+        packet["data_readiness"] = run_metadata["data_readiness"]
     return packet
 
 

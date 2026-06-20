@@ -36,6 +36,7 @@ Current scope:
 | Forecast Diagnostic Engine | Implemented | Converts static engine results into bounded diagnostic labels |
 | 8-Layer Diagnostic Chain | Implemented | Quant Core -> Scenario -> Risk -> Decision Lane -> Market Context -> Calibration -> Research Allocation View -> Router |
 | Evidence Packet + Diagnostic Routing Report | Implemented | Compact reviewer-facing packet/report after the diagnostic chain |
+| Data Readiness Contract | Implemented | Future database/storage requirements audit only; no database implemented yet |
 | Dashboard/API | Later | After diagnostic chain is stable |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -71,7 +72,7 @@ python -m pytest tests/hackaithon_mvp -q
 Expected local result:
 
 ```text
-168 passed
+185 passed
 ```
 
 ## How to Run One Static Engine
@@ -129,6 +130,7 @@ This MVP is bounded by the following rules:
 
 * baseline ML-only MVP scope
 * Data Gateway excluded for now
+* database/storage adapter excluded for now
 * no live data
 * no provider API calls
 * no model training
@@ -156,7 +158,7 @@ This repository should be pushed from the clean local snapshot once transport is
 The next implementation step is:
 
 ```text
-Minimal API / CLI Demo Surface
+Storage Adapter / Database Design Decision
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
