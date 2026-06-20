@@ -8,15 +8,51 @@ catalogs/hackaithon_mvp/*_engine_catalog.jsonl
 packaged_docs/*.zip
 *.zip
 
-# Runtime outputs
-outputs/
-data/
-cache/
+# Python/test cache
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
+.pytest-tmp/
 
-# Local environments
+# Local editor/environment
 .env
 .venv/
+.vscode/
+node_modules/
 *.egg-info/
+
+# Runtime/generated outputs
+outputs/
+artifacts/
+reports/generated/
+reports/pilot_*/
+cache/
+
+# Local temporary outputs
+.tmp_*/
+tmp/
+temp/
+
+# Local data and large row artifacts
+data/
+archive/
+models/
+**/row_predictions.csv
+**/predicted_vs_actual.csv
+**/final_results.csv
+**/candidate_predictions.csv
+**/full_model_predictions.csv
+**/base_oof_predictions.csv
+
+# Model artifacts
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.onnx
+
+# Local parquet/jsonl generated data
+*.parquet
+*.feather
+*.jsonl.tmp
