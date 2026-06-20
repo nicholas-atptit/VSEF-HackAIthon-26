@@ -1,4 +1,5 @@
-﻿import json
+import json
+import subprocess
 from pathlib import Path
 
 from src.hackaithon_mvp.engine_catalog.catalog_loader import load_catalog
@@ -34,6 +35,14 @@ def test_tracked_sample_catalogs_are_small_and_valid():
 
 
 def test_full_generated_jsonl_catalogs_are_not_required_in_git_snapshot():
-    assert not (ROOT / "baseline_engine_catalog.jsonl").exists()
-    assert not (ROOT / "support_engine_catalog.jsonl").exists()
-    assert not (ROOT / "stack_engine_catalog.jsonl").exists()
+    for path in (
+        ROOT / "baseline_engine_catalog.jsonl",
+        ROOT / "support_engine_catalog.jsonl",
+        ROOT / "stack_engine_catalog.jsonl",
+    ):
+        completed = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", path.as_posix()],
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode != 0

@@ -6,6 +6,11 @@ import argparse
 import json
 import re
 
+from src.hackaithon_mvp.hybrid_storage_architecture import (
+    HYBRID_ARCHITECTURE_NAME,
+    RECOMMENDED_CURRENT,
+    RECOMMENDED_TARGET,
+)
 from src.hackaithon_mvp.timeframe_schema import normalize_timeframe
 
 
@@ -15,7 +20,7 @@ PLANNED_QUERY_ADAPTER = "duckdb_compatible"
 PARTITION_COLUMNS = ("ticker", "timeframe", "date")
 REQUIRED_BAR_COLUMNS = ("ticker", "timeframe", "timestamp", "open", "high", "low", "close", "volume")
 OPTIONAL_BAR_COLUMNS = ("adjusted_close", "source", "metadata")
-NON_CLAIM_TEXT = "Storage design contract only; no database, data gateway, or live data access is created."
+NON_CLAIM_TEXT = "Storage design contract only; no server database, data gateway, or live data access is created."
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -43,12 +48,19 @@ def _validate_date(value: str) -> str:
 def get_storage_design() -> dict:
     return {
         "decision": STORAGE_BACKEND_DECISION,
+        "recommended_current": RECOMMENDED_CURRENT,
+        "recommended_target": RECOMMENDED_TARGET,
+        "hybrid_architecture_enabled": True,
+        "hybrid_architecture_module": "src.hackaithon_mvp.hybrid_storage_architecture",
+        "storage_target_architecture": HYBRID_ARCHITECTURE_NAME,
+        "local_storage_adapter_implemented": True,
         "canonical_data_format": CANONICAL_DATA_FORMAT,
         "planned_query_adapter": PLANNED_QUERY_ADAPTER,
         "partition_columns": list(PARTITION_COLUMNS),
         "required_bar_columns": list(REQUIRED_BAR_COLUMNS),
         "optional_bar_columns": list(OPTIONAL_BAR_COLUMNS),
         "database_created": False,
+        "server_database_created": False,
         "data_gateway_created": False,
         "live_data_enabled": False,
         "provider_calls_enabled": False,
