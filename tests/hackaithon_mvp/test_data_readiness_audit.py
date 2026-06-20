@@ -55,3 +55,13 @@ def test_data_readiness_audit_claim_boundary_disables_runtime_behaviors():
         "no performance claim",
     ):
         assert boundary in audit["claim_boundary"]
+
+
+def test_data_readiness_audit_includes_storage_design_decision():
+    audit = run_data_readiness_audit(InMemoryMarketDataStore())
+
+    assert audit["storage_design"]["decision"] == "local_parquet_dataset_with_duckdb_compatible_query_adapter"
+    assert audit["canonical_data_format"] == "parquet"
+    assert audit["planned_query_adapter"] == "duckdb_compatible"
+    assert audit["database_created"] is False
+    assert audit["data_gateway_created"] is False

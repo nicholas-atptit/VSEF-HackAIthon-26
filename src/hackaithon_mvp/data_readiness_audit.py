@@ -11,6 +11,7 @@ from src.hackaithon_mvp.data_contracts import (
     build_timeframe_requirements,
 )
 from src.hackaithon_mvp.storage_contract import InMemoryMarketDataStore, MarketDataStore
+from src.hackaithon_mvp.storage_design import get_storage_design
 from src.hackaithon_mvp.timeframe_schema import REQUIRED_TIMEFRAME_INPUTS
 
 
@@ -85,6 +86,7 @@ def run_data_readiness_audit(
 
     requirements_count = len(requirements)
     missing_count = requirements_count - ready_count
+    storage_design = get_storage_design()
     return {
         "audit_mode": AUDIT_MODE,
         "tickers_count": len(selected_tickers),
@@ -100,6 +102,11 @@ def run_data_readiness_audit(
         "per_ticker_summary": per_ticker,
         "database_required": True,
         "data_gateway_required_later": True,
+        "storage_design": storage_design,
+        "database_created": storage_design["database_created"],
+        "data_gateway_created": storage_design["data_gateway_created"],
+        "canonical_data_format": storage_design["canonical_data_format"],
+        "planned_query_adapter": storage_design["planned_query_adapter"],
         "claim_boundary": list(CLAIM_BOUNDARY),
         "non_claim": NON_CLAIM_TEXT,
         "store_description": store.describe(),

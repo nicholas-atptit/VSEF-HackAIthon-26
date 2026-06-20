@@ -37,6 +37,7 @@ Current scope:
 | 8-Layer Diagnostic Chain | Implemented | Quant Core -> Scenario -> Risk -> Decision Lane -> Market Context -> Calibration -> Research Allocation View -> Router |
 | Evidence Packet + Diagnostic Routing Report | Implemented | Compact reviewer-facing packet/report after the diagnostic chain |
 | Data Readiness Contract | Implemented | Future database/storage requirements audit only; no database implemented yet |
+| Storage Adapter / Database Design Decision | Implemented | Local Parquet dataset design with DuckDB-compatible query adapter planned; no database implemented yet |
 | Dashboard/API | Later | After diagnostic chain is stable |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -66,13 +67,13 @@ Support and stack engine specs are designed for later layers that combine, compa
 ## How to Run Tests
 
 ```powershell
-python -m pytest tests/hackaithon_mvp -q
+python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 ```
 
 Expected local result:
 
 ```text
-185 passed
+199 passed
 ```
 
 ## How to Run One Static Engine
@@ -149,16 +150,14 @@ This MVP is bounded by the following rules:
 
 A clean local snapshot exists.
 
-Previous push attempts were blocked by GitHub transport timeout. This was not a code or test failure.
-
-This repository should be pushed from the clean local snapshot once transport is available.
+The current MVP branch has been pushed after local tests passed.
 
 ## Next Step
 
 The next implementation step is:
 
 ```text
-Storage Adapter / Database Design Decision
+Local Parquet Storage Adapter
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
