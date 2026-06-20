@@ -44,6 +44,7 @@ Current scope:
 | Storage-to-DAG Runtime Integration | Implemented | Optional local storage context loading and compact DAG artifact persistence; no storage read/write by default |
 | Actual Outcome Builder from Local Bars | Implemented | Derives forecast-vs-actual rows only from provided local OHLCV bars; skips missing actuals |
 | Forecast-Actual-DAG Storage Loop | Implemented | Links local forecast rows, local bars, actual outcome construction, evaluation, and optional local persistence |
+| CLI Demo Scenario / End-to-End Local Run | Implemented | Tiny deterministic local fixture run across DAG, actual outcome construction, evaluation, and optional persistence |
 | Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
 | Legacy Forecast-Actual Adapter | Implemented | Converts local legacy row artifacts into the MVP evaluator schema |
 | Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
@@ -84,7 +85,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-403 passed
+422 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -222,6 +223,18 @@ Example:
 python -m src.hackaithon_mvp.forecast_actual_dag_loop --forecasts path/to/forecast_rows.jsonl --bars path/to/bar_rows.jsonl
 ```
 
+## CLI Demo Scenario / End-to-End Local Run
+
+The CLI demo scenario uses tiny deterministic local fixtures to exercise the MVP flow across the diagnostic DAG, forecast row construction, local OHLCV bars, actual outcome construction, forecast-vs-actual evaluation, and optional local persistence.
+
+It does not fetch data and does not write by default. Persistence requires an explicit `--persist` flag and a local storage root.
+
+Example:
+
+```powershell
+python -m src.hackaithon_mvp.end_to_end_demo
+```
+
 ## Scope Boundaries
 
 This MVP is bounded by the following rules:
@@ -255,7 +268,7 @@ The current MVP branch has been pushed after local tests passed.
 The next implementation step is:
 
 ```text
-CLI Demo Scenario / End-to-End Local Run
+Submission Packaging / Public Demo Readiness Pass
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
