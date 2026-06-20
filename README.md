@@ -45,6 +45,7 @@ Current scope:
 | Actual Outcome Builder from Local Bars | Implemented | Derives forecast-vs-actual rows only from provided local OHLCV bars; skips missing actuals |
 | Forecast-Actual-DAG Storage Loop | Implemented | Links local forecast rows, local bars, actual outcome construction, evaluation, and optional local persistence |
 | CLI Demo Scenario / End-to-End Local Run | Implemented | Tiny deterministic local fixture run across DAG, actual outcome construction, evaluation, and optional persistence |
+| Submission Packaging / Public Demo Readiness Pass | Implemented | Local readiness checker for README boundaries, safe demo commands, and manual review items |
 | Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
 | Legacy Forecast-Actual Adapter | Implemented | Converts local legacy row artifacts into the MVP evaluator schema |
 | Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
@@ -85,7 +86,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-422 passed
+440 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -235,6 +236,18 @@ Example:
 python -m src.hackaithon_mvp.end_to_end_demo
 ```
 
+## Public Demo Commands
+
+The public demo readiness pass checks README boundaries, local demo command metadata, and remaining manual review items.
+
+These commands are local-only and do not write files by default. Persistence requires explicit flags. Human review remains required.
+
+```powershell
+python -m src.hackaithon_mvp.end_to_end_demo
+python -m src.hackaithon_mvp.end_to_end_demo --format report
+python -m src.hackaithon_mvp.public_demo_readiness
+```
+
 ## Scope Boundaries
 
 This MVP is bounded by the following rules:
@@ -268,7 +281,7 @@ The current MVP branch has been pushed after local tests passed.
 The next implementation step is:
 
 ```text
-Submission Packaging / Public Demo Readiness Pass
+Final Repo Hygiene / Submission Tag
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
