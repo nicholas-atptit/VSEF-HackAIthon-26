@@ -70,6 +70,7 @@ def test_build_ollama_chat_payload_is_bounded():
 
     assert payload["model"] == "qwen3.5:4b"
     assert payload["stream"] is False
+    assert payload["think"] is False
     assert len(payload["messages"][0]["content"]) == 8000
     assert len(payload["messages"][1]["content"]) == 16000
     assert payload["options"]["temperature"] == 1.0

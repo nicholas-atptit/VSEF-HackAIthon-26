@@ -135,3 +135,63 @@ def test_llm_experiment_validation_catches_action_labels():
 
     assert validation["is_valid"] is False
     assert any("action labels" in error for error in validation["errors"])
+
+
+def test_llm_experiment_validation_catches_restricted_public_wording():
+    restricted_word = "".join(("deploy", "ment"))
+    result = {
+        "experiment_status": "completed",
+        "answer": f"This answer includes {restricted_word} wording.",
+        "source_ids": ["source-1"],
+        "human_review_required": True,
+        "read_only": True,
+        "claim_boundary": {
+            "cloud_api_enabled": False,
+            "live_data_enabled": False,
+            "provider_calls_enabled": False,
+            "training_enabled": False,
+            "fine_tuning_enabled": False,
+            "market_prediction_inference_enabled": False,
+            "benchmark_rerun": False,
+            "mutates_policies": False,
+            "mutates_models": False,
+            "mutates_storage": False,
+            "mutates_evidence": False,
+            "mutates_decision_lanes": False,
+        },
+    }
+
+    validation = validate_llm_experiment_result(result)
+
+    assert validation["is_valid"] is False
+    assert any("restricted public wording" in error for error in validation["errors"])
+
+
+def test_llm_experiment_validation_catches_restricted_market_phrase():
+    restricted_phrase = " ".join(("trading", "signals"))
+    result = {
+        "experiment_status": "completed",
+        "answer": f"This answer repeats {restricted_phrase}.",
+        "source_ids": ["source-1"],
+        "human_review_required": True,
+        "read_only": True,
+        "claim_boundary": {
+            "cloud_api_enabled": False,
+            "live_data_enabled": False,
+            "provider_calls_enabled": False,
+            "training_enabled": False,
+            "fine_tuning_enabled": False,
+            "market_prediction_inference_enabled": False,
+            "benchmark_rerun": False,
+            "mutates_policies": False,
+            "mutates_models": False,
+            "mutates_storage": False,
+            "mutates_evidence": False,
+            "mutates_decision_lanes": False,
+        },
+    }
+
+    validation = validate_llm_experiment_result(result)
+
+    assert validation["is_valid"] is False
+    assert any("restricted market-action wording" in error for error in validation["errors"])

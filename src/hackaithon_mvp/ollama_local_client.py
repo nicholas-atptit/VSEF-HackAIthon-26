@@ -99,13 +99,122 @@ def _request_json(
             body = response.read()
     except (error.URLError, TimeoutError, socket.timeout, OSError) as exc:
         return None, type(exc).__name__
+    return _decode_ollama_response_body(body)
+
+
+def _decode_ollama_response_body(body: bytes) -> tuple[dict[str, Any] | None, str | None]:
+    """Decode Ollama JSON or accidental NDJSON stream payloads."""
+
     try:
-        decoded = json.loads(body.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return None, f"invalid_json:{type(exc).__name__}"
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        chunks: list[dict[str, Any]] = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError as exc:
+                return None, f"invalid_json:{type(exc).__name__}"
+            if not isinstance(chunk, dict):
+                return None, "invalid_json:stream_chunk_not_object"
+            chunks.append(chunk)
+        if chunks:
+            return {"_stream_chunks": chunks}, None
         return None, f"invalid_json:{type(exc).__name__}"
     if not isinstance(decoded, dict):
         return None, "invalid_json:payload_not_object"
     return decoded, None
+
+
+def _empty_response_debug(*, extraction_path: str = "not_called") -> dict[str, Any]:
+    return {
+        "raw_response_keys": [],
+        "content_extraction_path": extraction_path,
+        "thinking_present": False,
+        "answer_length": 0,
+    }
+
+
+def _response_keys(payload: dict[str, Any]) -> list[str]:
+    if "_stream_chunks" in payload and isinstance(payload.get("_stream_chunks"), list):
+        keys: set[str] = set()
+        for chunk in payload["_stream_chunks"]:
+            if isinstance(chunk, dict):
+                keys.update(str(key) for key in chunk.keys())
+        return sorted(keys)
+    return sorted(str(key) for key in payload.keys() if not str(key).startswith("_"))
+
+
+def _extract_ollama_answer(payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Extract final answer content without substituting model thinking."""
+
+    raw_keys = _response_keys(payload)
+    thinking_present = False
+    answer = ""
+    extraction_path = "empty"
+
+    chunks = payload.get("_stream_chunks")
+    if isinstance(chunks, list):
+        message_parts: list[str] = []
+        response_parts: list[str] = []
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            message = chunk.get("message", {})
+            if isinstance(message, dict):
+                thinking_present = thinking_present or bool(message.get("thinking"))
+                content = message.get("content")
+                if content:
+                    message_parts.append(str(content))
+            thinking_present = thinking_present or bool(chunk.get("thinking"))
+            response = chunk.get("response")
+            if response:
+                response_parts.append(str(response))
+        if message_parts:
+            answer = "".join(message_parts).strip()
+            extraction_path = "stream.message.content"
+        elif response_parts:
+            answer = "".join(response_parts).strip()
+            extraction_path = "stream.response"
+        return answer, {
+            "raw_response_keys": raw_keys,
+            "content_extraction_path": extraction_path,
+            "thinking_present": thinking_present,
+            "answer_length": len(answer),
+        }
+
+    message = payload.get("message", {})
+    if isinstance(message, dict):
+        thinking_present = thinking_present or bool(message.get("thinking"))
+        content = message.get("content")
+        if content:
+            answer = str(content).strip()
+            extraction_path = "message.content"
+    thinking_present = thinking_present or bool(payload.get("thinking"))
+    if not answer and payload.get("response"):
+        answer = str(payload["response"]).strip()
+        extraction_path = "response"
+    return answer, {
+        "raw_response_keys": raw_keys,
+        "content_extraction_path": extraction_path,
+        "thinking_present": thinking_present,
+        "answer_length": len(answer),
+    }
+
+
+def _compact_raw_response(payload: dict[str, Any], *, endpoint: str) -> dict[str, Any]:
+    return {
+        "endpoint": endpoint,
+        "done": payload.get("done"),
+        "model": payload.get("model"),
+        "created_at": payload.get("created_at"),
+    }
 
 
 def _available_model_names(tags_payload: dict[str, Any]) -> tuple[str, ...]:
@@ -195,12 +304,37 @@ def build_ollama_chat_payload(
     return {
         "model": str(model),
         "stream": False,
+        "think": False,
         "messages": [
             {"role": "system", "content": str(system_prompt or "")[:8000]},
             {"role": "user", "content": str(user_prompt or "")[:16000]},
         ],
         "options": {
             "temperature": temp,
+            "num_predict": 512,
+        },
+    }
+
+
+def _build_ollama_generate_payload(
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> dict:
+    prompt = "\n\n".join(
+        [
+            f"System:\n{str(system_prompt or '')[:8000]}",
+            f"User:\n{str(user_prompt or '')[:16000]}",
+        ]
+    )
+    return {
+        "model": str(model),
+        "stream": False,
+        "think": False,
+        "prompt": prompt[:24000],
+        "options": {
+            "temperature": 0.1,
             "num_predict": 512,
         },
     }
@@ -218,12 +352,15 @@ def call_ollama_chat(
 
     availability = check_ollama_availability(base_url=base_url, model=model)
     if availability["availability_status"] != "available":
+        debug = _empty_response_debug(extraction_path="not_called")
         return {
             "call_status": availability["availability_status"],
             "model": availability["model"],
             "llm_called": False,
             "answer": "",
             "raw_response": {},
+            "model_response_debug": dict(debug),
+            **debug,
             "errors": list(availability.get("errors", [])),
             "message": availability.get("message"),
             "claim_boundary": dict(CLAIM_BOUNDARY),
@@ -242,32 +379,68 @@ def call_ollama_chat(
         timeout_seconds=timeout_seconds,
     )
     if request_error:
+        debug = _empty_response_debug(extraction_path="request_failed")
         return {
             "call_status": "ollama_unavailable",
             "model": availability["model"],
             "llm_called": False,
             "answer": "",
             "raw_response": {},
+            "model_response_debug": dict(debug),
+            **debug,
             "errors": [request_error],
             "message": "Local Ollama chat call failed cleanly.",
             "claim_boundary": dict(CLAIM_BOUNDARY),
             "non_claim": NON_CLAIM_TEXT,
         }
 
-    message = response_payload.get("message", {}) if isinstance(response_payload, dict) else {}
-    answer = message.get("content") if isinstance(message, dict) else None
-    if answer is None:
-        answer = response_payload.get("response", "") if isinstance(response_payload, dict) else ""
+    answer, debug = _extract_ollama_answer(response_payload)
+    raw_response = _compact_raw_response(response_payload, endpoint="/api/chat")
+    fallback_used = "none"
+    if not answer:
+        generate_payload = _build_ollama_generate_payload(
+            model=availability["model"],
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+        generate_response, generate_error = _request_json(
+            url=f"{availability['base_url']}/api/generate",
+            method="POST",
+            payload=generate_payload,
+            timeout_seconds=timeout_seconds,
+        )
+        if generate_response is not None and not generate_error:
+            generate_answer, generate_debug = _extract_ollama_answer(generate_response)
+            fallback_used = "api_generate"
+            if generate_answer:
+                answer = generate_answer
+                debug = generate_debug
+                raw_response = _compact_raw_response(generate_response, endpoint="/api/generate")
+            else:
+                debug = {
+                    **generate_debug,
+                    "thinking_present": bool(debug.get("thinking_present")) or bool(generate_debug.get("thinking_present")),
+                }
+                raw_response = _compact_raw_response(generate_response, endpoint="/api/generate")
+        else:
+            debug = {
+                **debug,
+                "fallback_error": generate_error,
+            }
     return {
         "call_status": "completed",
         "model": availability["model"],
         "llm_called": True,
         "answer": str(answer or "").strip(),
-        "raw_response": {
-            "done": response_payload.get("done"),
-            "model": response_payload.get("model"),
-            "created_at": response_payload.get("created_at"),
+        "raw_response": raw_response,
+        "model_response_debug": {
+            **debug,
+            "fallback_used": fallback_used,
         },
+        "raw_response_keys": debug["raw_response_keys"],
+        "content_extraction_path": debug["content_extraction_path"],
+        "thinking_present": debug["thinking_present"],
+        "answer_length": debug["answer_length"],
         "errors": [],
         "message": "Local Ollama chat completed.",
         "claim_boundary": dict(CLAIM_BOUNDARY),
