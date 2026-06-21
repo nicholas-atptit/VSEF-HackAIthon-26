@@ -7,17 +7,23 @@ import json
 
 from src.hackaithon_mvp.dag_forecast_output_verification import run_dag_forecast_verification_cases
 from src.hackaithon_mvp.dashboard_artifact_export import build_dashboard_artifact, validate_dashboard_artifact
+from src.hackaithon_mvp.decision_lane_v2 import run_decision_lane_v2
+from src.hackaithon_mvp.diagnostic_engine_hardening_gate import run_diagnostic_engine_hardening_gate
 from src.hackaithon_mvp.diagram_coverage_matrix import build_diagram_coverage_matrix, summarize_diagram_coverage
+from src.hackaithon_mvp.engine_input_contract import build_minimal_engine_input_fixture, validate_engine_input_payload
 from src.hackaithon_mvp.feedback_loop_contract import (
     build_feedback_loop_contract,
     build_policy_update_candidate,
     validate_feedback_loop_boundary,
 )
+from src.hackaithon_mvp.ml_diagnostic_engine import run_ml_diagnostic_engine
 from src.hackaithon_mvp.periodic_diagnostic_runner import build_periodic_runner_plan
 from src.hackaithon_mvp.public_architecture_alignment import (
     audit_architecture_alignment_claims,
     build_public_architecture_alignment,
 )
+from src.hackaithon_mvp.risk_engine_v2 import run_risk_engine_v2
+from src.hackaithon_mvp.scenario_engine_v2 import run_scenario_engine_v2
 from src.hackaithon_mvp.social_listening_contract import (
     build_empty_social_context,
     get_social_listening_contract,
@@ -65,6 +71,18 @@ def build_diagram_demo_readiness_summary() -> dict:
         current_policy_id=None,
     )
     feedback_validation = validate_feedback_loop_boundary(feedback_candidate)
+    engine_payload = build_minimal_engine_input_fixture()
+    input_validation = validate_engine_input_payload(engine_payload)
+    ml_summary = run_ml_diagnostic_engine(tuple(engine_payload["model_diagnostics"]))
+    scenario_summary = run_scenario_engine_v2(payload=engine_payload, ml_summary=ml_summary)
+    risk_summary = run_risk_engine_v2(payload=engine_payload, ml_summary=ml_summary, scenario_summary=scenario_summary)
+    decision_summary = run_decision_lane_v2(
+        diagnostic_output={"forecast_diagnostic": engine_payload["forecast_rows"][0]["forecast_diagnostic"]},
+        ml_summary=ml_summary,
+        risk_summary=risk_summary,
+        scenario_summary=scenario_summary,
+    )
+    hardening_gate = run_diagnostic_engine_hardening_gate()
 
     checks = {
         "dag_forecast_verification": dag_verification.get("verification_status") == "completed",
@@ -74,6 +92,12 @@ def build_diagram_demo_readiness_summary() -> dict:
         "dashboard_artifact_export": dashboard_validation.get("is_valid") is True,
         "social_listening_contract": social_contract.get("contract_status") == "schema_contract_only",
         "feedback_loop_contract": feedback_validation.get("is_valid") is True,
+        "gateway_input_contract_ready": input_validation.get("is_valid") is True,
+        "ml_diagnostic_engine_ready": ml_summary.get("ml_engine_status") == "completed",
+        "scenario_engine_v2_ready": scenario_summary.get("scenario_engine_status") == "completed",
+        "risk_engine_v2_ready": risk_summary.get("risk_engine_status") == "completed",
+        "decision_lane_v2_ready": decision_summary.get("decision_lane_status") == "routed_for_review",
+        "hardening_gate_ready": hardening_gate.get("hardening_status") == "accepted_for_gateway_ready_local_engine_core",
     }
     ready = all(checks.values())
     return {
@@ -94,6 +118,12 @@ def build_diagram_demo_readiness_summary() -> dict:
         "social_context_status": social_context.get("context_status"),
         "feedback_loop_contract_status": feedback_contract.get("contract_status"),
         "feedback_candidate_action": feedback_candidate.get("candidate_action"),
+        "gateway_input_contract_ready": checks["gateway_input_contract_ready"],
+        "ml_diagnostic_engine_ready": checks["ml_diagnostic_engine_ready"],
+        "risk_engine_v2_ready": checks["risk_engine_v2_ready"],
+        "scenario_engine_v2_ready": checks["scenario_engine_v2_ready"],
+        "decision_lane_v2_ready": checks["decision_lane_v2_ready"],
+        "hardening_gate_status": hardening_gate.get("hardening_status"),
         "remaining_future_scope": architecture_alignment.get("future_scope", []),
         "explicitly_excluded": architecture_alignment.get("explicitly_excluded", []),
         "claim_boundary": dict(CLAIM_BOUNDARY),
@@ -126,6 +156,14 @@ def render_diagram_demo_readiness_report(summary: dict) -> str:
         f"Dashboard artifact export: {summary.get('dashboard_artifact_export_status')}",
         f"Social listening: {summary.get('social_listening_contract_status')}",
         f"Feedback loop: {summary.get('feedback_loop_contract_status')}",
+        "",
+        "## Diagnostic Engine Core",
+        f"Gateway input contract ready: {summary.get('gateway_input_contract_ready')}",
+        f"ML Diagnostic Engine ready: {summary.get('ml_diagnostic_engine_ready')}",
+        f"Scenario Engine V2 ready: {summary.get('scenario_engine_v2_ready')}",
+        f"Risk Engine V2 ready: {summary.get('risk_engine_v2_ready')}",
+        f"Decision Lane V2 ready: {summary.get('decision_lane_v2_ready')}",
+        f"Hardening gate status: {summary.get('hardening_gate_status')}",
         "",
         "## Future Scope",
         *[f"- {item}" for item in summary.get("remaining_future_scope", [])],

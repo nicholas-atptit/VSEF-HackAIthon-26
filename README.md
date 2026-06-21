@@ -59,6 +59,13 @@ Current scope:
 | Social Listening Placeholder Contract | Implemented as contract | Schema and empty context only; no ingestion, API calls, scraping, live data, or sentiment model |
 | Feedback Loop Contract | Implemented as contract | Builds human-review candidates from local evaluation only; no auto-training or auto-policy mutation |
 | Diagram Demo Readiness Aggregate | Implemented | Aggregates DAG verification, coverage, architecture alignment, and Level 2 local contracts |
+| Gateway-ready Engine Input Contract | Implemented | Canonical payload contract for later Data Gateway handoff; validates provided records only |
+| ML Diagnostic Engine | Implemented | Baseline ML-only diagnostic summary over provided model diagnostic records; no training or inference |
+| Risk Engine V2 | Implemented | Gateway-ready diagnostic risk assessment across data quality, evidence, model agreement, calibration, policy, scenario, staleness, and context |
+| Scenario Engine V2 | Implemented | Local diagnostic stress-context registry and stability assessment; no macro, provider, or live calls |
+| Decision Lane V2 | Implemented | Final human-review diagnostic routing lane; no action labels and no auto execution |
+| Diagnostic Engine Payload Orchestration | Implemented | Validates canonical payload, runs DAG + ML/Risk/Scenario/Decision V2, and returns bounded review artifacts |
+| Diagnostic Engine Hardening Gate | Implemented | Local acceptance gate for invalid input, missing evidence, model disagreement, critical risk, policy preservation, and boundary checks |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -94,10 +101,33 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-474 passed
+508 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
+
+## Gateway-ready Diagnostic Engine Core
+
+The Diagnostic Engine is now gateway-ready as a local/static diagnostic subsystem.
+
+A later Data Gateway should feed the canonical engine input payload:
+
+```text
+request + market_bars + forecast_rows + model_diagnostics + scenario_context + risk_context + social_context + metadata
+```
+
+The engine validates and normalizes that payload, then runs deterministic local diagnostic processing across the existing DAG, ML Diagnostic Engine, Scenario Engine V2, Risk Engine V2, Decision Lane V2, evidence artifacts, dashboard artifact export, and hardening checks.
+
+This is not an operating production system. It performs no live data fetch, provider calls, model training, live inference, or benchmark rerun. Human review remains required.
+
+Decision Lane V2 is diagnostic routing only, not operational decisioning.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
+python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
+```
 
 ## How to Run One Static Engine
 
@@ -257,6 +287,8 @@ python -m src.hackaithon_mvp.public_demo_readiness
 python -m src.hackaithon_mvp.dag_forecast_output_verification --format report
 python -m src.hackaithon_mvp.diagram_coverage_matrix --format report
 python -m src.hackaithon_mvp.diagram_demo_readiness --format report
+python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
+python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
 ```
 
 ## Diagram Demo Alignment
@@ -291,6 +323,8 @@ This MVP is bounded by the following rules:
 * no live execution workflow
 * no production readiness claim
 * no profitability guarantee
+* gateway-ready engine core is local/static only
+* later Data Gateway must conform to the canonical input payload
 * human review required
 
 ## Git / Push Status
