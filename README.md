@@ -16,7 +16,9 @@ Current scope:
 
 - baseline ML models only
 - static/local sample evidence only
-- no Data Gateway in this sprint
+- no Data Gateway for live/provider ingestion
+- no live Data Gateway in this sprint
+- offline local-file gateway only
 - no live data
 - no provider API calls
 - no model training
@@ -71,6 +73,12 @@ Current scope:
 | Diagnostic-to-LLM Record Builder | Implemented | Converts diagnostic engine, hardening gate, and diagram readiness outputs into compact read-only records |
 | Read-only LLM Retriever | Implemented | Simple keyword retrieval context over local records; cannot mutate policies, models, storage, or routing lanes |
 | LLM Storage Readiness Gate | Implemented | Local readiness check for record validation, temp-dir JSONL store behavior, conversion, and retrieval boundaries |
+| Offline Data Gateway v0 | Implemented | Reads CSV/JSONL/JSON local files, validates OHLCV bars, normalizes canonical payloads, and can optionally write LLM-readable evidence with explicit store root |
+| Local Cache Gateway | Implemented | Read-only local cache manifest and file discovery; ignores temp/generated directories and summarizes candidates |
+| DAG Backtest Harness | Implemented | Local/static diagnostic harness over canonical payload windows; no benchmark rerun or execution authority |
+| Risk Engine V3 | Implemented | Strengthens diagnostic risk checks for OHLCV integrity, liquidity, repeated bars, volatility/gaps, staleness, consistency, and context |
+| Fine-tune Control Plane | Implemented as contract | Creates human-review experiment candidates only; no training, external model calls, automatic policy mutation, or launch action |
+| Gateway/Backtest/Fine-tune Readiness Gate | Implemented | Local acceptance gate for offline gateway, LLM evidence write integration, DAG harness, Risk V3, and fine-tune controls |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -106,7 +114,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-529 passed
+564 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -134,6 +142,29 @@ python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
 ```
 
+## Offline Gateway, Local Harness, Risk V3, and Fine-tune Controls
+
+Offline Data Gateway v0 reads CSV, JSONL, JSON, or discovered local cache files only. It does not call VNstock or provider APIs, does not require paid intraday data, and does not fetch live data. It validates local OHLCV bars, normalizes them into the canonical Diagnostic Engine payload, and feeds the local Diagnostic Engine.
+
+When an explicit store root is provided, the offline gateway can convert the Diagnostic Engine result into LLM-readable evidence records and write them to the local JSONL evidence store. No write happens by default.
+
+The DAG Backtest Harness is local/static diagnostic testing over provided local payloads or tiny fixtures. It is not an execution backtest and not a benchmark rerun.
+
+Risk Engine V3 strengthens diagnostic-only risk assessment across OHLCV integrity, liquidity, repeated bars, volatility/gap checks, staleness, missing context, and evidence consistency.
+
+The Fine-tune Control Plane creates human-review experiment candidates only. It does not train, fine-tune, launch, or mutate policy automatically.
+
+Human review remains required. No live/provider/training/inference/benchmark behavior is added.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.dag_backtest_harness --fixture --format report
+python -m src.hackaithon_mvp.risk_engine_v3
+python -m src.hackaithon_mvp.fine_tune_control_plane --format report
+python -m src.hackaithon_mvp.gateway_backtest_readiness --format report
+```
+
 ## Local LLM-Readable Evidence Store
 
 The LLM-readable storage layer is a local evidence/RAG store contract.
@@ -153,6 +184,10 @@ python -m src.hackaithon_mvp.llm_storage_contract
 python -m src.hackaithon_mvp.llm_storage_readiness --format report
 python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
 python -m src.hackaithon_mvp.llm_retriever --store-root .tmp_llm_store --query "diagnostic engine boundary"
+python -m src.hackaithon_mvp.dag_backtest_harness --fixture --format report
+python -m src.hackaithon_mvp.risk_engine_v3
+python -m src.hackaithon_mvp.fine_tune_control_plane --format report
+python -m src.hackaithon_mvp.gateway_backtest_readiness --format report
 ```
 
 ## How to Run One Static Engine
@@ -338,7 +373,8 @@ The feedback loop creates human-review candidates only. It does not auto-train, 
 This MVP is bounded by the following rules:
 
 * baseline ML-only MVP scope
-* Data Gateway excluded for now
+* live Data Gateway excluded for now
+* Offline Data Gateway v0 is local-file only
 * server database excluded for now
 * real accuracy requires local actual data input
 * no live data
@@ -356,6 +392,10 @@ This MVP is bounded by the following rules:
 * gateway-ready engine core is local/static only
 * later Data Gateway must conform to the canonical input payload
 * local LLM-readable evidence store is JSONL/read-only context only
+* offline gateway optional evidence writes require an explicit local store root
+* DAG harness is diagnostic-only and not a benchmark rerun
+* Risk Engine V3 remains diagnostic-only
+* fine-tune control plane produces human-review candidates only
 * no server database or production vector database is implemented
 * LLM retrieval cannot mutate policies, models, database state, or decision lanes
 * human review required

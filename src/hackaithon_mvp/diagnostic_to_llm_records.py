@@ -73,7 +73,7 @@ def build_llm_records_from_diagnostic_result(result: dict) -> tuple[dict, ...]:
     engine_status = result.get("engine_status")
     completeness = result.get("engine_completeness", {})
     ml_summary = result.get("ml_engine", {})
-    risk_summary = result.get("risk_engine_v2", {})
+    risk_summary = result.get("risk_engine_v3") or result.get("risk_engine_v2", {})
     scenario_summary = result.get("scenario_engine_v2", {})
     decision = result.get("decision_lane_v2", {})
     dag_output = result.get("dag_output", {})
@@ -132,7 +132,7 @@ def build_llm_records_from_diagnostic_result(result: dict) -> tuple[dict, ...]:
         _base_record(
             record_id=f"{prefix}:risk_assessment",
             record_type="risk_assessment",
-            title="Risk Engine V2 assessment",
+            title=f"Risk Engine {str(risk_summary.get('risk_engine_version', 'v2')).upper()} assessment",
             summary="Compact diagnostic risk assessment.",
             content={
                 "risk_engine_status": risk_summary.get("risk_engine_status"),
@@ -141,7 +141,7 @@ def build_llm_records_from_diagnostic_result(result: dict) -> tuple[dict, ...]:
                 "blocking_flags": list(risk_summary.get("blocking_flags", []) or []),
                 "risk_review_reason": risk_summary.get("risk_review_reason"),
             },
-            source_module="risk_engine_v2",
+            source_module="risk_engine_v3" if risk_summary.get("risk_engine_version") == "v3" else "risk_engine_v2",
             context=context,
             claim_boundary=risk_summary.get("claim_boundary") or result.get("claim_boundary"),
             non_claim=risk_summary.get("non_claim") or result.get("non_claim"),

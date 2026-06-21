@@ -23,6 +23,7 @@ from src.hackaithon_mvp.quant_core_policy_registry import (
     get_demo_policy_predicted_vs_actual,
 )
 from src.hackaithon_mvp.risk_engine_v2 import run_risk_engine_v2
+from src.hackaithon_mvp.risk_engine_v3 import run_risk_engine_v3
 from src.hackaithon_mvp.scenario_engine_v2 import run_scenario_engine_v2
 
 
@@ -328,14 +329,15 @@ def run_diagnostic_engine_from_payload(payload: dict) -> dict:
     ml_summary = run_ml_diagnostic_engine(tuple(normalized.get("model_diagnostics", []) or ()))
     scenario_summary = run_scenario_engine_v2(payload=normalized, ml_summary=ml_summary)
     risk_summary = run_risk_engine_v2(payload=normalized, ml_summary=ml_summary, scenario_summary=scenario_summary)
+    risk_v3_summary = run_risk_engine_v3(payload=normalized, ml_summary=ml_summary, scenario_summary=scenario_summary)
     decision = run_decision_lane_v2(
         diagnostic_output=diagnostic_output,
         ml_summary=ml_summary,
-        risk_summary=risk_summary,
+        risk_summary=risk_v3_summary,
         scenario_summary=scenario_summary,
     )
-    evidence = _build_evidence(normalized, ml_summary, risk_summary, scenario_summary, decision, dag_output)
-    dashboard_artifact = _build_dashboard_artifact(dag_output, risk_summary, scenario_summary, decision)
+    evidence = _build_evidence(normalized, ml_summary, risk_v3_summary, scenario_summary, decision, dag_output)
+    dashboard_artifact = _build_dashboard_artifact(dag_output, risk_v3_summary, scenario_summary, decision)
     result = {
         "engine_status": "completed_gateway_ready_local_engine_core",
         "input_validation": input_validation,
@@ -343,6 +345,7 @@ def run_diagnostic_engine_from_payload(payload: dict) -> dict:
         "ml_engine": ml_summary,
         "scenario_engine_v2": scenario_summary,
         "risk_engine_v2": risk_summary,
+        "risk_engine_v3": risk_v3_summary,
         "decision_lane_v2": decision,
         "evidence": evidence,
         "dashboard_artifact": dashboard_artifact,
@@ -369,6 +372,7 @@ def render_diagnostic_engine_report(result: dict) -> str:
         f"ML engine: {result.get('ml_engine', {}).get('ml_engine_status')}",
         f"Scenario Engine V2: {result.get('scenario_engine_v2', {}).get('scenario_engine_status')}",
         f"Risk Engine V2: {result.get('risk_engine_v2', {}).get('risk_level')}",
+        f"Risk Engine V3: {result.get('risk_engine_v3', {}).get('risk_level')}",
         f"Decision Lane V2: {result.get('decision_lane_v2', {}).get('lane')}",
         f"Completeness: {result.get('engine_completeness', {}).get('completeness_status')}",
         "Human review required: True",
