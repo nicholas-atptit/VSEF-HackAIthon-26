@@ -79,6 +79,8 @@ Current scope:
 | Risk Engine V3 | Implemented | Strengthens diagnostic risk checks for OHLCV integrity, liquidity, repeated bars, volatility/gaps, staleness, consistency, and context |
 | Fine-tune Control Plane | Implemented as contract | Creates human-review experiment candidates only; no training, external model calls, automatic policy mutation, or launch action |
 | Gateway/Backtest/Fine-tune Readiness Gate | Implemented | Local acceptance gate for offline gateway, LLM evidence write integration, DAG harness, Risk V3, and fine-tune controls |
+| Engine Universe Forecast Diagnostic Sweep | Implemented | Runs generated diagnostic engine specs against current static/local evidence and summarizes coverage, skips, labels, routes, risk availability, families, and horizons |
+| Engine Universe Sweep Readiness Gate | Implemented | Local acceptance gate for discovery, limited sweep execution, safe command metadata, serialization, no-write defaults, boundaries, and representative samples |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -105,6 +107,23 @@ Each engine can run independently if matching static evidence exists. If evidenc
 
 Auxiliary and stack engine specs are designed for later layers that combine, compare, or check outputs from baseline diagnostic engines.
 
+## Engine Universe Forecast Diagnostic Sweep
+
+The engine universe forecast diagnostic sweep runs over generated diagnostic engine specs and summarizes how the current local/static evidence behaves across the available universe.
+
+It does not train 77,850 models, run live inference, fetch data, call providers, rerun benchmarks, or make market-performance claims.
+
+The sweep reports total discovered specs, attempted specs, completed/skipped/failed counts, diagnostic label distribution, route distribution, risk distribution when available, model family distribution, horizon distribution, evidence coverage, top skip reasons, and representative compact outputs.
+
+Raw sweep outputs are generated artifacts and must not be committed. The CLI does not write files by default; compact summary writing requires an explicit path.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --format report
+python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
+```
+
 ## How to Run Tests
 
 ```powershell
@@ -114,7 +133,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-564 passed
+581 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -144,7 +163,7 @@ python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
 
 ## Offline Gateway, Local Harness, Risk V3, and Fine-tune Controls
 
-Offline Data Gateway v0 reads CSV, JSONL, JSON, or discovered local cache files only. It does not call VNstock or provider APIs, does not require paid intraday data, and does not fetch live data. It validates local OHLCV bars, normalizes them into the canonical Diagnostic Engine payload, and feeds the local Diagnostic Engine.
+Offline Data Gateway v0 reads CSV, JSONL, JSON, or discovered local cache files only. It does not call provider APIs, does not require paid intraday data, and does not fetch live data. It validates local OHLCV bars, normalizes them into the canonical Diagnostic Engine payload, and feeds the local Diagnostic Engine.
 
 When an explicit store root is provided, the offline gateway can convert the Diagnostic Engine result into LLM-readable evidence records and write them to the local JSONL evidence store. No write happens by default.
 
@@ -350,6 +369,8 @@ python -m src.hackaithon_mvp.diagram_coverage_matrix --format report
 python -m src.hackaithon_mvp.diagram_demo_readiness --format report
 python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
+python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --format report
+python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
 python -m src.hackaithon_mvp.llm_storage_contract
 python -m src.hackaithon_mvp.llm_storage_readiness --format report
 python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
