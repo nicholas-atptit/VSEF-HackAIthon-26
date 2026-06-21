@@ -51,7 +51,15 @@ Current scope:
 | Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
 | Quant Core Accuracy Optimizer | Implemented | Simulates validation-split diagnostic policies; improvements are coverage-dependent and validation-measured only |
 | Quant Core Policy Registry | Implemented | Stores small versioned diagnostic policy objects for runtime application without rerunning optimization |
-| Dashboard/API | Later | After diagnostic chain is stable |
+| DAG Forecast Output Verification | Implemented | Runs four local/static DAG verification cases and renders a compact demo table; no writes |
+| Diagram-to-Code Coverage Matrix | Implemented | Maps architecture blocks to code modules, tests, MVP status, boundaries, and future scope |
+| Public Architecture Alignment Pass | Implemented | Public-safe summary of implemented, local-demo, contract, future, and excluded scope |
+| Periodic Diagnostic Runner | Implemented as contract | Local dry-run runner; one iteration by default; no daemon and no writes by default |
+| Dashboard Artifact Export | Implemented as local demo | Compact JSON artifact for future display; not a web dashboard; writes only with explicit `--write` |
+| Social Listening Placeholder Contract | Implemented as contract | Schema and empty context only; no ingestion, API calls, scraping, live data, or sentiment model |
+| Feedback Loop Contract | Implemented as contract | Builds human-review candidates from local evaluation only; no auto-training or auto-policy mutation |
+| Diagram Demo Readiness Aggregate | Implemented | Aggregates DAG verification, coverage, architecture alignment, and Level 2 local contracts |
+| Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
 
@@ -86,7 +94,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-440 passed
+474 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -246,7 +254,22 @@ These commands are local-only and do not write files by default. Persistence req
 python -m src.hackaithon_mvp.end_to_end_demo
 python -m src.hackaithon_mvp.end_to_end_demo --format report
 python -m src.hackaithon_mvp.public_demo_readiness
+python -m src.hackaithon_mvp.dag_forecast_output_verification --format report
+python -m src.hackaithon_mvp.diagram_coverage_matrix --format report
+python -m src.hackaithon_mvp.diagram_demo_readiness --format report
 ```
+
+## Diagram Demo Alignment
+
+The diagram demo alignment layer is local/static and research-only.
+
+The periodic runner is a local dry-run contract only. It runs one bounded iteration by default, does not start a background process, and does not write files by default.
+
+The dashboard artifact export creates a compact JSON object for future display. It is not a web dashboard and writes only when an explicit `--write` path is provided.
+
+The social listening placeholder is schema/contract only. It performs no ingestion, API calls, scraping, live data access, or sentiment modeling.
+
+The feedback loop creates human-review candidates only. It does not auto-train, auto-apply policies, mutate policies automatically, run inference, fetch live data, call provider APIs, or rerun benchmarks.
 
 ## Scope Boundaries
 
@@ -281,7 +304,7 @@ The current MVP branch has been pushed after local tests passed.
 The next implementation step is:
 
 ```text
-Final Repo Hygiene / Submission Tag
+Slide / Pitch Script Packaging
 ```
 
 Do not start with dashboard work and do not build the Data Gateway yet.
