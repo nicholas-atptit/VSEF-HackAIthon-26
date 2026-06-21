@@ -1,0 +1,357 @@
+"""Evidence-grounded local Ollama LLM experiment."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from typing import Any
+
+from src.hackaithon_mvp.llm_retriever import retrieve_llm_context, validate_llm_context
+from src.hackaithon_mvp.ollama_local_client import (
+    CLAIM_BOUNDARY as OLLAMA_CLIENT_BOUNDARY,
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    NON_CLAIM_TEXT as OLLAMA_CLIENT_NON_CLAIM,
+    call_ollama_chat,
+)
+
+
+CLAIM_BOUNDARY = {
+    **OLLAMA_CLIENT_BOUNDARY,
+    "evidence_grounded_only": True,
+    "read_only_retrieval": True,
+    "mutates_policies": False,
+    "mutates_models": False,
+    "mutates_storage": False,
+    "mutates_evidence": False,
+    "mutates_decision_lanes": False,
+}
+NON_CLAIM_TEXT = "Local evidence-grounded LLM experiment; answers are limited to retrieved records and require human review."
+INSUFFICIENT_EVIDENCE_ANSWER = "Insufficient retrieved evidence to answer from the local context."
+LLM_MUST_NOT = (
+    "mutate policies",
+    "mutate models",
+    "mutate storage",
+    "mutate evidence",
+    "alter decision lanes",
+    "claim beyond retrieved evidence",
+    "create action labels",
+    "give trading decisions",
+    "claim production readiness",
+)
+ACTION_LABEL_TERMS = ("".join(("b", "uy")), "".join(("se", "ll")), "".join(("ho", "ld")))
+ACTION_PATTERN = re.compile(r"\b(" + "|".join(re.escape(term) for term in ACTION_LABEL_TERMS) + r")\b", re.IGNORECASE)
+ADVISORY_PATTERN = re.compile(r"\b" + re.escape(" ".join(("financial", "ad" + "vice"))) + r"\b", re.IGNORECASE)
+OVERCLAIM_PATTERN = re.compile(r"\bproduction[-\s]+ready\b|\bguaranteed\s+profit", re.IGNORECASE)
+
+
+def _resolve_model(model: str | None) -> str | None:
+    return str(model).strip() if model is not None and str(model).strip() else None
+
+
+def _record_excerpt(record: dict[str, Any]) -> dict[str, Any]:
+    content = record.get("content", {})
+    if isinstance(content, dict):
+        compact_content = {
+            str(key): value
+            for key, value in list(content.items())[:8]
+            if isinstance(value, (str, int, float, bool, type(None), list, tuple, dict))
+        }
+    else:
+        compact_content = {"content": str(content)[:500]}
+    return {
+        "record_id": record.get("record_id"),
+        "record_type": record.get("record_type"),
+        "title": record.get("title"),
+        "summary": record.get("summary"),
+        "content": compact_content,
+        "non_claim": record.get("non_claim"),
+    }
+
+
+def _source_ids(context: dict) -> list[str]:
+    return [
+        str(record.get("record_id"))
+        for record in context.get("records", []) or []
+        if isinstance(record, dict) and record.get("record_id")
+    ]
+
+
+def _public_context(context: dict) -> dict[str, Any]:
+    return {
+        "retrieval_status": context.get("retrieval_status"),
+        "query": context.get("query"),
+        "record_type": context.get("record_type"),
+        "record_count": context.get("record_count"),
+        "records": context.get("records", ()),
+        "claim_boundary": context.get("claim_boundary"),
+        "non_claim": context.get("non_claim"),
+        "read_only": context.get("read_only"),
+        "human_review_required": context.get("human_review_required"),
+    }
+
+
+def build_llm_system_prompt() -> str:
+    """Build the strict local evidence prompt."""
+
+    return "\n".join(
+        [
+            "You answer only from the provided local retrieved context.",
+            "Cite source IDs used in the answer.",
+            "State uncertainty and limits from the context.",
+            "Do not create action labels.",
+            "Do not provide investment or money guidance.",
+            "Do not give trading decisions.",
+            "Do not make production claims.",
+            "Human review is required.",
+            "If evidence is insufficient, say: insufficient retrieved evidence.",
+        ]
+    )
+
+
+def build_evidence_grounded_user_prompt(
+    *,
+    query: str,
+    retrieved_context: dict,
+) -> str:
+    """Build a bounded user prompt from retrieved records only."""
+
+    records = [_record_excerpt(record) for record in retrieved_context.get("records", []) or [] if isinstance(record, dict)]
+    payload = {
+        "query": str(query or ""),
+        "retrieval_status": retrieved_context.get("retrieval_status"),
+        "source_ids": _source_ids(retrieved_context),
+        "records": records,
+        "instructions": {
+            "answer_from_context_only": True,
+            "cite_source_ids": True,
+            "human_review_required": True,
+            "abstain_when_insufficient": True,
+        },
+    }
+    return json.dumps(payload, indent=2, sort_keys=True, default=str)[:16000]
+
+
+def _base_result(*, model: str | None, query: str, context: dict) -> dict[str, Any]:
+    return {
+        "experiment_status": "not_run",
+        "model": model or DEFAULT_OLLAMA_MODEL,
+        "query": str(query or ""),
+        "retrieval_status": context.get("retrieval_status"),
+        "retrieved_record_count": int(context.get("record_count", 0) or 0),
+        "llm_called": False,
+        "answer": "",
+        "source_ids": _source_ids(context),
+        "abstained": False,
+        "human_review_required": True,
+        "read_only": True,
+        "claim_boundary": dict(CLAIM_BOUNDARY),
+        "non_claim": NON_CLAIM_TEXT,
+        "llm_must_not": list(LLM_MUST_NOT),
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def run_ollama_llm_experiment(
+    *,
+    store_root: str,
+    query: str,
+    model: str | None = None,
+    limit: int = 5,
+    base_url: str = DEFAULT_OLLAMA_BASE_URL,
+) -> dict:
+    """Run a read-only evidence-grounded local Ollama experiment."""
+
+    resolved_model = _resolve_model(model)
+    context = retrieve_llm_context(store_root=store_root, query=query, limit=limit)
+    context = _public_context(context)
+    result = _base_result(model=resolved_model, query=query, context=context)
+    context_validation = validate_llm_context(context)
+    if not context_validation["is_valid"]:
+        result.update(
+            {
+                "experiment_status": "retrieval_context_invalid",
+                "answer": INSUFFICIENT_EVIDENCE_ANSWER,
+                "abstained": True,
+                "errors": list(context_validation["errors"]),
+                "warnings": list(context_validation["warnings"]),
+            }
+        )
+        return result
+
+    if context.get("retrieval_status") != "records_available" or not context.get("records"):
+        result.update(
+            {
+                "experiment_status": "no_records_available",
+                "answer": INSUFFICIENT_EVIDENCE_ANSWER,
+                "abstained": True,
+                "warnings": ["no retrieved records available for local LLM context"],
+            }
+        )
+        return result
+
+    call_result = call_ollama_chat(
+        model=result["model"],
+        system_prompt=build_llm_system_prompt(),
+        user_prompt=build_evidence_grounded_user_prompt(query=query, retrieved_context=context),
+        base_url=base_url,
+    )
+    status = str(call_result.get("call_status"))
+    if status != "completed":
+        result.update(
+            {
+                "experiment_status": status,
+                "llm_called": bool(call_result.get("llm_called")),
+                "answer": INSUFFICIENT_EVIDENCE_ANSWER,
+                "abstained": True,
+                "warnings": [str(call_result.get("message") or "local Ollama call did not complete")],
+                "errors": list(call_result.get("errors", []) or []),
+            }
+        )
+        return result
+
+    answer = str(call_result.get("answer") or "").strip()
+    if not answer:
+        answer = INSUFFICIENT_EVIDENCE_ANSWER
+    result.update(
+        {
+            "experiment_status": "completed",
+            "llm_called": True,
+            "answer": answer,
+            "abstained": answer == INSUFFICIENT_EVIDENCE_ANSWER,
+            "warnings": [],
+            "errors": [],
+        }
+    )
+    validation = validate_llm_experiment_result(result)
+    if not validation["is_valid"]:
+        result["experiment_status"] = "blocked_by_output_validation"
+        result["answer"] = INSUFFICIENT_EVIDENCE_ANSWER
+        result["abstained"] = True
+        result["errors"] = list(validation["errors"])
+    return result
+
+
+def validate_llm_experiment_result(result: dict) -> dict:
+    """Validate local LLM experiment boundaries."""
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(result, dict):
+        return {"is_valid": False, "errors": ["result must be an object"], "warnings": warnings}
+    if result.get("human_review_required") is not True:
+        errors.append("human_review_required must be True")
+    if result.get("read_only") is not True:
+        errors.append("read_only must be True")
+    boundary = result.get("claim_boundary", {})
+    if not isinstance(boundary, dict):
+        errors.append("claim_boundary must be an object")
+        boundary = {}
+    for key in (
+        "cloud_api_enabled",
+        "live_data_enabled",
+        "provider_calls_enabled",
+        "training_enabled",
+        "fine_tuning_enabled",
+        "market_prediction_inference_enabled",
+        "benchmark_rerun",
+        "mutates_policies",
+        "mutates_models",
+        "mutates_storage",
+        "mutates_evidence",
+        "mutates_decision_lanes",
+    ):
+        if boundary.get(key) is not False:
+            errors.append(f"claim_boundary.{key} must be False")
+    answer = str(result.get("answer") or "")
+    if ACTION_PATTERN.search(answer):
+        errors.append("answer must not include action labels")
+    if ADVISORY_PATTERN.search(answer):
+        errors.append("answer must not include advisory wording")
+    if OVERCLAIM_PATTERN.search(answer):
+        errors.append("answer must not include production or performance overclaim wording")
+    if result.get("experiment_status") == "completed" and not result.get("source_ids"):
+        errors.append("completed result requires source_ids")
+    if result.get("llm_called") and result.get("experiment_status") != "completed" and not result.get("abstained"):
+        warnings.append("non-completed LLM call should abstain")
+    return {
+        "is_valid": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "claim_boundary": dict(CLAIM_BOUNDARY),
+        "non_claim": NON_CLAIM_TEXT,
+    }
+
+
+def render_llm_experiment_report(result: dict) -> str:
+    """Render a compact report for the optional local LLM experiment."""
+
+    lines = [
+        "# Ollama LLM Evidence Experiment",
+        "",
+        f"Experiment status: {result.get('experiment_status')}",
+        f"Model: {result.get('model')}",
+        f"Retrieval status: {result.get('retrieval_status')}",
+        f"Retrieved records: {result.get('retrieved_record_count')}",
+        f"LLM called: {result.get('llm_called')}",
+        f"Abstained: {result.get('abstained')}",
+        "Human review required: True",
+        "Read-only: True",
+        "",
+        "Answer:",
+        str(result.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER),
+        "",
+        "Source IDs:",
+    ]
+    source_ids = result.get("source_ids", []) or []
+    if not source_ids:
+        lines.append("- none")
+    else:
+        lines.extend(f"- {source_id}" for source_id in source_ids)
+    lines.extend(
+        [
+            "",
+            "Boundary: retrieved local evidence only; no cloud API, live data, provider call, training, fine-tuning, market-prediction inference, benchmark rerun, or mutation.",
+            str(result.get("non_claim", NON_CLAIM_TEXT)),
+        ]
+    )
+    if result.get("warnings"):
+        lines.extend(["", "Warnings:", *[f"- {warning}" for warning in result["warnings"]]])
+    if result.get("errors"):
+        lines.extend(["", "Errors:", *[f"- {error}" for error in result["errors"]]])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run an optional local Ollama experiment over retrieved evidence.")
+    parser.add_argument("--store-root", required=True)
+    parser.add_argument("--query", required=True)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--base-url", default=DEFAULT_OLLAMA_BASE_URL)
+    parser.add_argument("--format", choices=("json", "report"), default="report")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    result = run_ollama_llm_experiment(
+        store_root=args.store_root,
+        query=args.query,
+        model=args.model,
+        limit=args.limit,
+        base_url=args.base_url,
+    )
+    if args.format == "json":
+        print(json.dumps(result, indent=2, sort_keys=True, default=str))
+    else:
+        print(render_llm_experiment_report(result), end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -81,6 +81,10 @@ Current scope:
 | Gateway/Backtest/Fine-tune Readiness Gate | Implemented | Local acceptance gate for offline gateway, LLM evidence write integration, DAG harness, Risk V3, and fine-tune controls |
 | Engine Universe Forecast Diagnostic Sweep | Implemented | Runs generated diagnostic engine specs against current static/local evidence and summarizes coverage, skips, labels, routes, risk availability, families, and horizons |
 | Engine Universe Sweep Readiness Gate | Implemented | Local acceptance gate for discovery, limited sweep execution, safe command metadata, serialization, no-write defaults, boundaries, and representative samples |
+| Local Ollama LLM Client | Implemented as optional local experiment | Localhost-only Ollama availability and chat client; no model auto-pull and clean unavailable status |
+| Evidence-grounded Ollama LLM Experiment | Implemented as optional local experiment | Reads retrieved local evidence records only and returns bounded human-reviewed diagnostic explanations |
+| Qwen Ollama Smoke Harness | Implemented as optional local experiment | Uses a temporary system-path evidence store when no store root is provided and removes it before returning |
+| Ollama LLM Readiness Gate | Implemented as optional local experiment | Checks local client, retriever integration, temp-store smoke behavior, unavailable states, and boundary flags |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -124,6 +128,24 @@ python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --forma
 python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
 ```
 
+## Optional Local Ollama LLM Experiment
+
+The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
+
+The default requested model is `qwen3.5:4b`. The model can be overridden with CLI `--model` or the `OLLAMA_MODEL` environment variable. The repository does not auto-pull models. If Ollama or the requested model is unavailable, the readiness gate reports a clean unavailable status and tells the user to inspect installed local model tags.
+
+The LLM cannot mutate policies, models, storage, evidence, or decision lanes. Its output is not market guidance, not a production claim, and remains human-reviewed.
+
+No cloud API, live market data, provider calls, training, fine-tuning, market-prediction inference, or benchmark rerun is added.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.ollama_local_client --check --model qwen3.5:4b
+python -m src.hackaithon_mvp.ollama_llm_readiness --model qwen3.5:4b --format report
+python -m src.hackaithon_mvp.qwen_ollama_smoke --model qwen3.5:4b --format report
+```
+
 ## How to Run Tests
 
 ```powershell
@@ -133,7 +155,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-581 passed
+604 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -371,6 +393,9 @@ python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
 python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --format report
 python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
+python -m src.hackaithon_mvp.ollama_local_client --check --model qwen3.5:4b
+python -m src.hackaithon_mvp.ollama_llm_readiness --model qwen3.5:4b --format report
+python -m src.hackaithon_mvp.qwen_ollama_smoke --model qwen3.5:4b --format report
 python -m src.hackaithon_mvp.llm_storage_contract
 python -m src.hackaithon_mvp.llm_storage_readiness --format report
 python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
