@@ -66,6 +66,11 @@ Current scope:
 | Decision Lane V2 | Implemented | Final human-review diagnostic routing lane; no action labels and no auto execution |
 | Diagnostic Engine Payload Orchestration | Implemented | Validates canonical payload, runs DAG + ML/Risk/Scenario/Decision V2, and returns bounded review artifacts |
 | Diagnostic Engine Hardening Gate | Implemented | Local acceptance gate for invalid input, missing evidence, model disagreement, critical risk, policy preservation, and boundary checks |
+| LLM-readable Storage Contract | Implemented | Local JSONL record contract for read-only diagnostic evidence context |
+| Local Evidence Store | Implemented | Explicit local JSONL read/write/search helper; no writes without a caller-provided store root |
+| Diagnostic-to-LLM Record Builder | Implemented | Converts diagnostic engine, hardening gate, and diagram readiness outputs into compact read-only records |
+| Read-only LLM Retriever | Implemented | Simple keyword retrieval context over local records; cannot mutate policies, models, storage, or routing lanes |
+| LLM Storage Readiness Gate | Implemented | Local readiness check for record validation, temp-dir JSONL store behavior, conversion, and retrieval boundaries |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -101,7 +106,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-508 passed
+529 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -127,6 +132,27 @@ Examples:
 ```powershell
 python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
+```
+
+## Local LLM-Readable Evidence Store
+
+The LLM-readable storage layer is a local evidence/RAG store contract.
+
+It converts bounded Diagnostic Engine outputs into compact JSONL records that an LLM can retrieve as read-only context. It is not a server database. It is not a production vector database.
+
+The LLM reads through retrieval context only. It cannot mutate policies, models, database state, or decision lanes. Human review remains required.
+
+No live data fetch, provider calls, training, live inference, or benchmark rerun are added.
+
+`.tmp_llm_store` is generated local output and must not be committed.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.llm_storage_contract
+python -m src.hackaithon_mvp.llm_storage_readiness --format report
+python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
+python -m src.hackaithon_mvp.llm_retriever --store-root .tmp_llm_store --query "diagnostic engine boundary"
 ```
 
 ## How to Run One Static Engine
@@ -289,6 +315,10 @@ python -m src.hackaithon_mvp.diagram_coverage_matrix --format report
 python -m src.hackaithon_mvp.diagram_demo_readiness --format report
 python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
+python -m src.hackaithon_mvp.llm_storage_contract
+python -m src.hackaithon_mvp.llm_storage_readiness --format report
+python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
+python -m src.hackaithon_mvp.llm_retriever --store-root .tmp_llm_store --query "diagnostic engine boundary"
 ```
 
 ## Diagram Demo Alignment
@@ -325,6 +355,9 @@ This MVP is bounded by the following rules:
 * no profitability guarantee
 * gateway-ready engine core is local/static only
 * later Data Gateway must conform to the canonical input payload
+* local LLM-readable evidence store is JSONL/read-only context only
+* no server database or production vector database is implemented
+* LLM retrieval cannot mutate policies, models, database state, or decision lanes
 * human review required
 
 ## Git / Push Status
