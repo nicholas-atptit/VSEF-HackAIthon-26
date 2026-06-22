@@ -14,15 +14,15 @@ It is designed to show how a stock-evaluation system can organize model diagnost
 
 Current scope:
 
-- baseline ML models only
-- static/local sample evidence only
+- baseline and classical ML diagnostic models only
+- static/local sample evidence plus local OHLCV-derived training/evaluation evidence
 - no Data Gateway for live/provider ingestion
 - no live Data Gateway in this sprint
 - offline local-file gateway only
 - no live data
 - no provider API calls
-- no model training
-- no model inference
+- bounded local model training/tuning only through explicit `.tmp_full_model_run` workflows
+- generated forecasts/evidence stay untracked and are not committed
 - no benchmark rerun
 - no action-oriented output
 - human review required
@@ -94,6 +94,13 @@ Current scope:
 | Release Model Tuning Gate | Implemented | Classifies local rows as evaluation-only, policy-threshold eligible, or feature-matrix ready; no tuning by default |
 | Eligible Model Policy Tuner | Implemented | Tunes only eligible model/horizon probability thresholds with temporal validation and explicit temp output |
 | Release Accuracy Report | Implemented | Combines artifact discovery, local accuracy metrics, baselines, tuning readiness, and release gate status |
+| Full Model Run Planner | Implemented | Inspects local OHLCV, labeled rows, model families, horizons, feature requirements, and dependency gaps before bounded execution |
+| Local Training Dataset Builder | Implemented | Builds ticker-aware, horizon-aware supervised direction rows from local OHLCV bars without future leakage |
+| Optional Provider Data Fetch Contract | Implemented as disabled contract | Disabled by default; provider access requires explicit environment flags and writes only to `.tmp_full_model_run` |
+| Full Eligible Model Trainer | Implemented | Trains/tunes eligible local model groups with temporal validation, bounded grids, checkpoints, per-model timeout checks, and generated output only |
+| Model Run Evidence Materializer | Implemented | Converts local training outputs into static evidence, dependency outputs, forecast-vs-actual rows, diagnostics, and accuracy summaries |
+| Full Engine Universe Runner | Implemented | Reruns the generated engine universe with materialized evidence and reports completed, skipped, failed, and remaining skip reasons |
+| Full Release Model Orchestrator | Implemented | Runs planning, dataset build, eligible training/tuning, evidence materialization, accuracy evaluation, and generated-evidence engine sweep under explicit output root |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -153,6 +160,42 @@ python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
 python -m src.hackaithon_mvp.engine_universe_gap_analysis --format report
 ```
 
+## Full Local Model Run and Generated Evidence
+
+The full release model orchestrator can generate missing local evidence instead of relying only on pre-existing static artifacts.
+
+The older 77,730 skip count was from the pre-generated evidence state, before model-run evidence materialization. A bounded local run now builds supervised rows from local OHLCV files, trains/tunes eligible baseline/classical model groups, evaluates forecast-vs-actual rows, materializes static evidence/dependency outputs, and reruns the generated engine universe against that generated evidence.
+
+Latest local run summary:
+
+- local OHLCV data was sufficient; provider fetch was not used
+- input bars: 88,048 across 35 tickers
+- supervised dataset rows: 437,575
+- eligible model groups attempted/trained/tuned by the full trainer: 150 / 150 / 150
+- generated forecast-vs-actual rows: 112,500
+- evaluated rows: 112,500
+- global directional accuracy: 0.466304
+- global balanced accuracy: 0.474034
+- baseline comparison: majority-class 0.514734, random 0.500000, previous-direction 0.964075, zero-return MAE 0.271903
+- explicit policy-threshold tuner groups: 55 tuned, 0 skipped
+- trainer average validation balanced accuracy moved from 0.493001 pre-tune to 0.490691 post-tune, so this is not a model-superiority claim
+- engine universe completed specs improved from 120 to 24,000
+- skipped specs reduced from 77,730 to 53,850
+- failed specs: 0
+- top remaining skip reasons: no matching static evidence for model target horizon (28,350), required dependency outputs unavailable (25,500)
+
+Generated output lives under `.tmp_full_model_run` and must not be committed. The numbers above are local-evidence results from the latest run, not provider-backed results, not benchmark results, and not an operational claim.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.full_model_run_planner --format report
+python -m src.hackaithon_mvp.local_training_dataset_builder --format report
+python -m src.hackaithon_mvp.full_release_model_orchestrator --output-root .tmp_full_model_run --max-workers 1 --format report
+python -m src.hackaithon_mvp.release_accuracy_report --input .tmp_full_model_run\forecast_actual_rows.jsonl --tuning-output .tmp_full_model_run\tuning_report.json --format report
+python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_full_model_run\evidence --output-root .tmp_full_model_run\engine_sweep --format report
+```
+
 ## Optional Local Ollama LLM Experiment
 
 The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
@@ -183,7 +226,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-705 passed
+725 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -192,9 +235,11 @@ Accuracy optimizer and policy-registry results are diagnostic policy simulations
 
 Release accuracy requires local labeled forecast-vs-actual rows. If those rows are missing for a model, horizon, ticker, or generated spec, the release gates return skip reasons instead of fabricating metrics.
 
-The release evaluator computes accuracy only for explicit local rows. It reports directional accuracy, balanced accuracy, confusion matrix, Wilson interval, numeric error when return columns exist, probability metrics when score columns exist, grouped metrics, and baseline comparisons. It does not create labels, fetch data, run models, or write files by default.
+The release evaluator computes accuracy only for explicit local rows. It reports directional accuracy, balanced accuracy, confusion matrix, Wilson interval, numeric error when return columns exist, probability metrics when score columns exist, grouped metrics, and baseline comparisons. It does not fetch data, train models, or write files by default.
 
-The release tuning gate is a control layer. If only forecast outputs, actual labels, and probability scores are available, the eligible tuner can run policy-threshold search only. It uses a temporal train/validation split, reports pre-tune and post-tune validation metrics, and writes output only to an explicit `.tmp_tuning*` path. True model hyperparameter work requires a local feature matrix, target labels, temporal validation, no leakage columns, and human review.
+The release tuning gate is a control layer. If only forecast outputs, actual labels, and probability scores are available, the eligible tuner can run policy-threshold search only. It uses a temporal train/validation split, reports pre-tune and post-tune validation metrics, and writes output only to an explicit `.tmp_tuning*` or `.tmp_full_model_run` path. True model hyperparameter work requires a local feature matrix, target labels, temporal validation, no leakage columns, and human review.
+
+The full local model run pipeline can create forecast-vs-actual rows from local OHLCV data and train/tune every eligible baseline/classical group it can prove safe. Specs that still lack target/horizon evidence or dependency outputs remain skipped with explicit reasons.
 
 Examples:
 
@@ -205,6 +250,10 @@ python -m src.hackaithon_mvp.forecast_accuracy_evaluator --input path\to\forecas
 python -m src.hackaithon_mvp.release_accuracy_report --discover --format report
 python -m src.hackaithon_mvp.release_accuracy_report --input path\to\forecast_actual_rows.jsonl --format report
 python -m src.hackaithon_mvp.eligible_model_policy_tuner --input path\to\forecast_actual_rows.jsonl --write-report .tmp_tuning_report.json --format report
+python -m src.hackaithon_mvp.full_model_run_planner --format report
+python -m src.hackaithon_mvp.local_training_dataset_builder --format report
+python -m src.hackaithon_mvp.optional_provider_data_fetch --format report
+python -m src.hackaithon_mvp.full_release_model_orchestrator --output-root .tmp_full_model_run --max-workers 1 --format report
 ```
 
 ## Overnight Self-Improvement and Tuning Readiness
@@ -234,7 +283,7 @@ request + market_bars + forecast_rows + model_diagnostics + scenario_context + r
 
 The engine validates and normalizes that payload, then runs deterministic local diagnostic processing across the existing DAG, ML Diagnostic Engine, Scenario Engine V2, Risk Engine V2, Decision Lane V2, evidence artifacts, dashboard artifact export, and hardening checks.
 
-This is not an operating production system. It performs no live data fetch, provider calls, model training, live inference, or benchmark rerun. Human review remains required.
+This is not an operating production system. The gateway-ready diagnostic engine core itself performs no live data fetch, provider calls, model training, live inference, or benchmark rerun. Human review remains required.
 
 Decision Lane V2 is diagnostic routing only, not operational decisioning.
 
@@ -257,7 +306,7 @@ Risk Engine V3 strengthens diagnostic-only risk assessment across OHLCV integrit
 
 The Fine-tune Control Plane creates human-review experiment candidates only. It does not train, fine-tune, launch, or mutate policy automatically.
 
-Human review remains required. No live/provider/training/inference/benchmark behavior is added.
+Human review remains required. These gateway/backtest/fine-tune controls do not add live/provider behavior, model binary commits, automatic policy mutation, or benchmark reruns.
 
 Examples:
 
@@ -276,7 +325,7 @@ It converts bounded Diagnostic Engine outputs into compact JSONL records that an
 
 The LLM reads through retrieval context only. It cannot mutate policies, models, database state, or decision lanes. Human review remains required.
 
-No live data fetch, provider calls, training, live inference, or benchmark rerun are added.
+This LLM-readable storage layer adds no live data fetch, provider calls, training, live inference, or benchmark rerun.
 
 `.tmp_llm_store` is generated local output and must not be committed.
 
@@ -444,6 +493,8 @@ The public demo readiness pass checks README boundaries, local demo command meta
 
 These commands are local-only and do not write files by default. Persistence requires explicit flags. Human review remains required.
 
+The curated public demo command set performs no model training and no model inference. The full local model run is a separate explicit evidence-generation workflow under `.tmp_full_model_run`.
+
 ```powershell
 python -m src.hackaithon_mvp.end_to_end_demo
 python -m src.hackaithon_mvp.end_to_end_demo --format report
@@ -492,8 +543,8 @@ This MVP is bounded by the following rules:
 * real accuracy requires local actual data input
 * no live data
 * no provider API calls
-* no model training
-* no model inference
+* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run` workflows
+* generated forecast rows, evidence, diagnostics, and model outputs remain untracked
 * no benchmark rerun
 * no action labels
 * no decision guidance

@@ -15,6 +15,7 @@ def test_self_improvement_plan_lists_required_checks():
     assert plan["plan_status"] == "ready"
     assert "final_claim_boundary_audit" in plan["checks"]
     assert "engine_universe_gap_analysis" in plan["checks"]
+    assert "full_release_model_pipeline_status" in plan["checks"]
     assert plan["writes_files_by_default"] is False
 
 
@@ -67,6 +68,10 @@ def test_score_mentions_low_coverage_and_does_not_overstate_readiness():
                 "check_status": "completed",
                 "result": {"tuning_status": "no_eligible_models"},
             },
+            "full_release_model_pipeline_status": {
+                "check_status": "completed",
+                "result": {"pipeline_status": "not_run_no_generated_output_root", "completed_improvement": None},
+            },
         },
         "test_results": {"full_suite_passed": True},
     }
@@ -85,8 +90,9 @@ def test_self_improvement_audit_runs_and_report_renders():
     assert "overall_score_0_100" in result
     assert "Engine universe evidence coverage" in report
     assert "Release accuracy status" in report
+    assert "Full release model pipeline" in report
     assert "Evidence coverage ratio" in report
-    assert result["overall_score_0_100"] == 100
+    assert result["overall_score_0_100"] == 85
     assert result["self_improvement_status"] == "needs_evidence_before_stronger_claims"
 
 
@@ -116,5 +122,5 @@ def test_overnight_self_improvement_cli_accepts_external_test_pass_flag():
         text=True,
     )
 
-    assert "Overall score: 100" in completed.stdout
+    assert "Overall score: 85" in completed.stdout
     assert "needs_evidence_before_stronger_claims" in completed.stdout

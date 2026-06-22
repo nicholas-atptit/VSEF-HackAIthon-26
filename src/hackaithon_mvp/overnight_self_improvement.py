@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from src.hackaithon_mvp.dag_backtest_harness import build_dag_backtest_fixture, run_dag_backtest_from_payloads
@@ -59,6 +60,7 @@ def build_self_improvement_plan() -> dict:
             "release_accuracy_report",
             "release_model_tuning_gate",
             "eligible_model_policy_tuning_availability",
+            "full_release_model_pipeline_status",
             "model_tuning_readiness",
             "final_claim_boundary_audit",
             "ollama_llm_readiness",
@@ -81,6 +83,37 @@ def _safe_call(name: str, func) -> dict[str, Any]:
         return {"check_status": "completed", "result": {"value": result}, "errors": []}
     except Exception as exc:  # noqa: BLE001 - audit must isolate failed checks.
         return {"check_status": "failed", "result": {}, "errors": [f"{name}: {type(exc).__name__}: {exc}"]}
+
+
+def _read_full_release_model_pipeline_status(output_root: str = ".tmp_full_model_run") -> dict[str, Any]:
+    summary_path = Path(output_root) / "full_release_model_pipeline_summary.json"
+    if not summary_path.exists():
+        return {
+            "pipeline_status": "not_run_no_generated_output_root",
+            "output_root": output_root,
+            "generated_evidence_available": False,
+            "completed_improvement": None,
+            "remaining_skip_reasons": {},
+            "non_claim": "Full release model pipeline status is read-only and requires explicit generated outputs.",
+            "human_review_required": True,
+        }
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    engine = payload.get("engine_universe", {}) if isinstance(payload, dict) else {}
+    training = payload.get("training", {}) if isinstance(payload, dict) else {}
+    return {
+        "pipeline_status": payload.get("pipeline_status"),
+        "output_root": output_root,
+        "generated_evidence_available": True,
+        "trained_model_specs": training.get("trained_model_specs"),
+        "tuned_model_specs": training.get("tuned_model_specs"),
+        "generated_forecast_rows": (payload.get("evidence_materialization") or {}).get("forecast_row_count"),
+        "completed_count": engine.get("completed_count"),
+        "skipped_count": engine.get("skipped_count"),
+        "completed_improvement": engine.get("completed_improvement"),
+        "remaining_skip_reasons": engine.get("skip_reason_distribution") or {},
+        "non_claim": "Full release model pipeline status is read from local generated outputs only.",
+        "human_review_required": True,
+    }
 
 
 def run_self_improvement_audit(*, test_results: dict[str, Any] | None = None) -> dict:
@@ -123,6 +156,10 @@ def run_self_improvement_audit(*, test_results: dict[str, Any] | None = None) ->
             "result": release_tuning_result if isinstance(release_tuning_result, dict) else tune_all_eligible_models([]),
             "errors": [],
         },
+        "full_release_model_pipeline_status": _safe_call(
+            "full_release_model_pipeline_status",
+            _read_full_release_model_pipeline_status,
+        ),
         "model_tuning_readiness": _safe_call("model_tuning_readiness", run_model_tuning_readiness_gate),
         "final_claim_boundary_audit": _safe_call("final_claim_boundary_audit", run_final_claim_boundary_audit),
         "ollama_llm_readiness": _safe_call(
@@ -193,6 +230,7 @@ def score_self_improvement_readiness(result: dict) -> dict:
     release_accuracy = _check_result(result, "release_accuracy_report")
     release_tuning = _check_result(result, "release_model_tuning_gate")
     eligible_tuning = _check_result(result, "eligible_model_policy_tuning_availability")
+    full_pipeline = _check_result(result, "full_release_model_pipeline_status")
 
     score = 0
     tests_pass = bool(result.get("test_results", {}).get("full_suite_passed")) if isinstance(result.get("test_results"), dict) else None
@@ -249,19 +287,28 @@ def score_self_improvement_readiness(result: dict) -> dict:
         blocking.append("forecast_actual_accuracy_missing_before_release")
         score = min(score, 85)
     tuning_deferred_no_labeled_data = release_tuning.get("tuning_gate_status") == "not_ready_no_labeled_data"
+    if (
+        full_pipeline.get("pipeline_status") == "completed_partial_due_to_dependencies"
+        or int(full_pipeline.get("skipped_count") or 0) > 0
+    ):
+        score = min(score, 85)
 
     high_priority = [
         "claim-boundary audit included in score",
         "coverage gap transparency included in score",
-        "tuning readiness classified without training",
+        "tuning readiness and generated local training status reported",
         "gateway/risk/DAG checks included",
         "release accuracy gate included",
     ]
+    full_pipeline_generated = bool(full_pipeline.get("generated_evidence_available"))
     deferred = [
         "stronger generated-universe claims deferred until local evidence coverage improves",
-        "model training and fine-tuning deferred",
         "live/provider/cloud behavior deferred",
     ]
+    if full_pipeline_generated:
+        deferred.append("remaining generated specs without local target/horizon evidence or dependency outputs remain skipped")
+    else:
+        deferred.append("full local model run deferred until explicit .tmp_full_model_run output is generated")
     if tuning_deferred_no_labeled_data or eligible_tuning.get("tuning_status") == "no_eligible_models":
         deferred.append("tuning_deferred_no_labeled_data")
     if tests_pass is False:
@@ -290,6 +337,10 @@ def score_self_improvement_readiness(result: dict) -> dict:
         "release_accuracy_status": release_accuracy.get("release_accuracy_status"),
         "release_model_tuning_gate_status": release_tuning.get("tuning_gate_status"),
         "eligible_model_policy_tuning_status": eligible_tuning.get("tuning_status"),
+        "full_release_model_pipeline_status": full_pipeline.get("pipeline_status"),
+        "generated_evidence_completed_count": full_pipeline.get("completed_count"),
+        "generated_evidence_skipped_count": full_pipeline.get("skipped_count"),
+        "generated_evidence_completed_improvement": full_pipeline.get("completed_improvement"),
         "claim_boundary": dict(CLAIM_BOUNDARY),
         "non_claim": NON_CLAIM_TEXT,
         "human_review_required": True,
@@ -305,6 +356,7 @@ def render_self_improvement_report(result: dict) -> str:
     release_accuracy = _check_result(result, "release_accuracy_report")
     release_tuning = _check_result(result, "release_model_tuning_gate")
     discovery = _check_result(result, "forecast_actual_artifact_discovery")
+    full_pipeline = _check_result(result, "full_release_model_pipeline_status")
     blocking_lines = [f"- {issue}" for issue in result.get("blocking_issues", [])] or ["- none"]
     lines = [
         "# Overnight Self-Improvement Scorecard",
@@ -316,12 +368,17 @@ def render_self_improvement_report(result: dict) -> str:
         f"Release accuracy status: {release_accuracy.get('release_accuracy_status')}",
         f"Release tuning gate: {release_tuning.get('tuning_gate_status')}",
         f"Forecast-vs-actual candidate files: {discovery.get('candidate_file_count')}",
+        f"Full release model pipeline: {full_pipeline.get('pipeline_status')}",
+        f"Generated evidence completed improvement: {full_pipeline.get('completed_improvement')}",
         "",
         "Engine universe evidence coverage:",
         f"- Generated diagnostic spec universe: {gap.get('total_specs_discovered')}",
-        f"- Latest completed specs: {gap.get('completed_count')}",
-        f"- Latest skipped specs: {gap.get('skipped_count')}",
-        f"- Evidence coverage ratio: {gap.get('evidence_coverage_ratio')}",
+        f"- Static-evidence completed specs before materialization: {gap.get('completed_count')}",
+        f"- Static-evidence skipped specs before materialization: {gap.get('skipped_count')}",
+        f"- Evidence coverage ratio before materialization: {gap.get('evidence_coverage_ratio')}",
+        f"- Generated-evidence completed specs: {full_pipeline.get('completed_count')}",
+        f"- Generated-evidence skipped specs: {full_pipeline.get('skipped_count')}",
+        f"- Generated-evidence remaining skip reasons: {full_pipeline.get('remaining_skip_reasons') or {}}",
         "- Stronger claims require more local evidence and dependency outputs.",
         "",
         "Blocking issues:",

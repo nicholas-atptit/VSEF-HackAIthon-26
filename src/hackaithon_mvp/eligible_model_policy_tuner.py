@@ -295,8 +295,9 @@ def render_eligible_model_tuning_report(result: dict) -> str:
 def _validate_output_path(path: str) -> Path:
     output = Path(path)
     parts = [part.lower() for part in output.parts]
-    if not any(part.startswith(".tmp_tuning") for part in parts):
-        raise ValueError("write-report path must be inside or named .tmp_tuning*")
+    allowed_temp_roots = (".tmp_tuning", ".tmp_full_model_run")
+    if not any(part.startswith(allowed_temp_roots) for part in parts):
+        raise ValueError("write-report path must be inside .tmp_tuning* or .tmp_full_model_run")
     return output
 
 
@@ -312,9 +313,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     try:
+        output_path = _validate_output_path(args.write_report)
         rows = load_forecast_accuracy_rows(args.input)
         result = tune_all_eligible_models(rows)
-        output_path = _validate_output_path(args.write_report)
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     output_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")

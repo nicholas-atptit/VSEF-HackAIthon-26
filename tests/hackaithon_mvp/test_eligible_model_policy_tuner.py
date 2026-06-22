@@ -97,6 +97,37 @@ def test_tuner_cli_requires_explicit_tmp_output(tmp_path):
     assert "Eligible Model Policy Tuning" in completed.stdout
 
 
+def test_tuner_cli_accepts_full_model_run_tmp_output(tmp_path):
+    input_path = tmp_path / "forecast_actual_rows.jsonl"
+    input_path.write_text(
+        "\n".join(json.dumps(row) for row in _eligible_rows(12)) + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / ".tmp_full_model_run"
+    output_root.mkdir()
+    output_path = output_root / "tuning_report.json"
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "src.hackaithon_mvp.eligible_model_policy_tuner",
+            "--input",
+            str(input_path),
+            "--write-report",
+            str(output_path),
+            "--format",
+            "report",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["tuning_status"] == "completed"
+
+
 def test_tuning_report_has_no_market_action_labels():
     report = render_eligible_model_tuning_report(tune_all_eligible_models(_eligible_rows(12))).lower()
 
