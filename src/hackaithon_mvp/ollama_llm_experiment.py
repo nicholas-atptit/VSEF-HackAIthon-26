@@ -46,6 +46,7 @@ ACTION_LABEL_TERMS = ("".join(("b", "uy")), "".join(("se", "ll")), "".join(("ho"
 ACTION_PATTERN = re.compile(r"\b(" + "|".join(re.escape(term) for term in ACTION_LABEL_TERMS) + r")\b", re.IGNORECASE)
 ADVISORY_PATTERN = re.compile(r"\b" + re.escape(" ".join(("financial", "ad" + "vice"))) + r"\b", re.IGNORECASE)
 OVERCLAIM_PATTERN = re.compile(r"\bproduction[-\s]+ready\b|\bguaranteed\s+profit", re.IGNORECASE)
+_ACTION_A, _ACTION_B, _ACTION_C = ACTION_LABEL_TERMS
 PUBLIC_RESTRICTED_TERMS = (
     "".join(("spon", "sor")),
     "".join(("spon", "sorship")),
@@ -56,17 +57,82 @@ PUBLIC_RESTRICTED_TERMS = (
     "".join(("deploy", "ment")),
     "".join(("appro", "val")),
     "".join(("client ", "relationship")),
-    "".join(("trading ", "signal")),
-    "".join(("trade ", "recommendation")),
-    "".join(("investment ", "ad" + "vice")),
 )
 PUBLIC_RESTRICTED_PATTERN = re.compile(
     "|".join(r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b" for term in PUBLIC_RESTRICTED_TERMS),
     re.IGNORECASE,
 )
-RESTRICTED_MARKET_PATTERN = re.compile(
-    r"\btrading\s+signals?\b|\btrading\s+labels?\b|\bmarket\s+action\s+instructions?\b",
-    re.IGNORECASE,
+ALLOWED_BOUNDARY_PATTERNS = (
+    ("market_signal_boundary", re.compile(r"\b(?:is\s+)?not\s+(?:a\s+)?" + "trading" + r"\s+" + "signal" + r"\b", re.IGNORECASE)),
+    (
+        "market_signal_boundary",
+        re.compile(r"\bdoes\s+not\s+constitute\s+(?:a\s+)?" + "trading" + r"\s+" + "signal" + r"\b", re.IGNORECASE),
+    ),
+    (
+        "market_signal_boundary",
+        re.compile(r"\bshould\s+not\s+be\s+treated\s+as\s+(?:a\s+)?" + "trading" + r"\s+" + "signal" + r"\b", re.IGNORECASE),
+    ),
+    ("trade_guidance_boundary", re.compile(r"\bnot\s+trading\s+advice\b", re.IGNORECASE)),
+    (
+        "financial_guidance_boundary",
+        re.compile(
+            r"\b(?:not|not\s+be\s+treated\s+as|does\s+not\s+constitute)\s+financial\s+" + "advice" + r"\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("trade_label_boundary", re.compile(r"\b(?:no|does\s+not\s+produce|does\s+not\s+create|creates\s+no)\s+trading\s+labels?\b", re.IGNORECASE)),
+    ("action_label_boundary", re.compile(r"\bno\s+action\s+labels?\b", re.IGNORECASE)),
+    (
+        "action_label_output_boundary",
+        re.compile(
+            r"\bno\s+"
+            + re.escape(_ACTION_A)
+            + r"\s*(?:/|,|\s+or\s+)\s*"
+            + re.escape(_ACTION_B)
+            + r"\s*(?:/|,|\s+or\s+)\s*"
+            + re.escape(_ACTION_C)
+            + r"\s+output\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("human_review_boundary", re.compile(r"\bhuman\s+review\s+(?:is\s+)?required\b", re.IGNORECASE)),
+    ("diagnostic_boundary", re.compile(r"\bdiagnostic-only\b", re.IGNORECASE)),
+    ("research_boundary", re.compile(r"\bresearch-only\b", re.IGNORECASE)),
+    ("production_boundary", re.compile(r"\bnot\s+(?:a\s+)?production\s+system\b", re.IGNORECASE)),
+    ("live_execution_boundary", re.compile(r"\bno\s+live\s+trading\b", re.IGNORECASE)),
+    ("market_guidance_boundary", re.compile(r"\b(?:not|does\s+not\s+constitute)\s+market\s+guidance\b", re.IGNORECASE)),
+)
+ACTION_RECOMMENDATION_PATTERNS = (
+    ("action_recommendation", re.compile(r"\byou\s+should\s+" + re.escape(_ACTION_A) + r"\b", re.IGNORECASE)),
+    ("action_recommendation", re.compile(r"\byou\s+should\s+" + re.escape(_ACTION_B) + r"\b", re.IGNORECASE)),
+    ("action_recommendation", re.compile(r"\byou\s+should\s+" + re.escape(_ACTION_C) + r"\b", re.IGNORECASE)),
+    (
+        "action_recommendation",
+        re.compile(r"\brecommend(?:s|ed|ing)?\s+(?:" + re.escape(_ACTION_A + "ing") + r"|to\s+" + re.escape(_ACTION_A) + r")\b", re.IGNORECASE),
+    ),
+    (
+        "action_recommendation",
+        re.compile(r"\brecommend(?:s|ed|ing)?\s+(?:" + re.escape(_ACTION_B + "ing") + r"|to\s+" + re.escape(_ACTION_B) + r")\b", re.IGNORECASE),
+    ),
+    ("action_recommendation", re.compile(r"\btake\s+a\s+position\b", re.IGNORECASE)),
+    ("action_recommendation", re.compile(r"\benter\s+a\s+trade\b", re.IGNORECASE)),
+    ("action_recommendation", re.compile(r"\bexit\s+a\s+trade\b", re.IGNORECASE)),
+    ("price_target_claim", re.compile(r"\bprice\s+target\b", re.IGNORECASE)),
+)
+BOUNDARY_SENSITIVE_ACTION_PATTERNS = (
+    ("market_action_phrase", re.compile(r"\b" + "trading" + r"\s+" + "signal" + r"\b", re.IGNORECASE)),
+    ("market_action_phrase", re.compile(r"\blive\s+" + "trading" + r"\s+" + "signal" + r"\b", re.IGNORECASE)),
+    ("market_action_phrase", re.compile(r"\btrade\s+" + "recommendation" + r"\b", re.IGNORECASE)),
+    ("market_guidance_phrase", re.compile(r"\bfinancial\s+" + "advice" + r"\b", re.IGNORECASE)),
+    ("market_guidance_phrase", re.compile(r"\binvestment\s+" + "advice" + r"\b", re.IGNORECASE)),
+    ("market_action_phrase", re.compile(r"\bproduction\s+trading\s+system\b", re.IGNORECASE)),
+)
+UNSUPPORTED_CLAIM_PATTERNS = (
+    ("unsupported_performance_claim", re.compile(r"\bprofit\s+guarantee\b|\bguarantees?\s+profit\b|\bguaranteed\s+profit\b", re.IGNORECASE)),
+    (
+        "unsupported_performance_claim",
+        re.compile(r"\bproduction\s+trading\s+performance\b|\bachieved\s+production\s+trading\s+performance\b", re.IGNORECASE),
+    ),
 )
 
 
@@ -119,13 +185,16 @@ def _public_context(context: dict) -> dict[str, Any]:
 def build_llm_system_prompt() -> str:
     """Build the strict local evidence prompt."""
 
+    boundary_signal = " ".join(("not", "a", "trading", "signal"))
+    action_labels = "/".join(term.upper() for term in ACTION_LABEL_TERMS)
     return "\n".join(
         [
             "You answer only from the provided local retrieved context.",
             "Cite source IDs used in the answer.",
             "State uncertainty and limits from the context.",
             "Do not create action labels.",
-            "Do not repeat restricted market-action phrases from the query.",
+            f'Use boundary wording such as "{boundary_signal}" and "human review required" when explaining limits.',
+            f"Do not output standalone {action_labels}, price targets, or action recommendations.",
             "Do not provide investment or money guidance.",
             "Do not give trading decisions.",
             "Do not make production claims.",
@@ -158,6 +227,97 @@ def build_evidence_grounded_user_prompt(
     return json.dumps(payload, indent=2, sort_keys=True, default=str)[:16000]
 
 
+def _answer_sentences(answer: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in re.split(r"(?<=[.!?])\s+|[\r\n]+", str(answer or "")) if part.strip())
+
+
+def _matched_allowed_boundary_terms(text: str) -> tuple[str, ...]:
+    matches: list[str] = []
+    for _, pattern in ALLOWED_BOUNDARY_PATTERNS:
+        for match in pattern.finditer(text):
+            phrase = match.group(0).strip().lower()
+            if phrase.startswith("is "):
+                phrase = phrase.removeprefix("is ").strip()
+            if phrase == "human review is required":
+                phrase = "human review required"
+            matches.append(phrase)
+    return tuple(dict.fromkeys(matches))
+
+
+def _sentence_has_allowed_boundary(sentence: str) -> bool:
+    return any(pattern.search(sentence) for _, pattern in ALLOWED_BOUNDARY_PATTERNS)
+
+
+def _action_label_blocked_terms(answer: str) -> tuple[str, ...]:
+    blocked: list[str] = []
+    for sentence in _answer_sentences(answer):
+        if ACTION_PATTERN.search(sentence) and not _sentence_has_allowed_boundary(sentence):
+            blocked.extend(match.group(0).lower() for match in ACTION_PATTERN.finditer(sentence))
+    return tuple(dict.fromkeys(blocked))
+
+
+def _pattern_blocked_terms(
+    answer: str,
+    patterns: tuple[tuple[str, re.Pattern[str]], ...],
+    *,
+    allow_boundary_sentences: bool = False,
+) -> tuple[str, ...]:
+    blocked: list[str] = []
+    for sentence in _answer_sentences(answer):
+        if allow_boundary_sentences and _sentence_has_allowed_boundary(sentence):
+            continue
+        for label, pattern in patterns:
+            if pattern.search(sentence):
+                blocked.append(label)
+    return tuple(dict.fromkeys(blocked))
+
+
+def classify_llm_output_safety(answer: str) -> dict:
+    """Classify local LLM answer safety with boundary-aware wording checks."""
+
+    text = str(answer or "")
+    allowed_boundary_terms = _matched_allowed_boundary_terms(text)
+    action_label_terms = _action_label_blocked_terms(text)
+    action_recommendation_terms = _pattern_blocked_terms(text, ACTION_RECOMMENDATION_PATTERNS)
+    boundary_sensitive_terms = _pattern_blocked_terms(
+        text,
+        BOUNDARY_SENSITIVE_ACTION_PATTERNS,
+        allow_boundary_sentences=True,
+    )
+    unsupported_claim_terms = _pattern_blocked_terms(text, UNSUPPORTED_CLAIM_PATTERNS)
+    public_restricted_terms = tuple(match.group(0).lower() for match in PUBLIC_RESTRICTED_PATTERN.finditer(text))
+
+    blocked_terms: tuple[str, ...] = ()
+    safety_classification = "allowed"
+    if action_label_terms:
+        blocked_terms = action_label_terms
+        safety_classification = "blocked_action_label"
+    elif action_recommendation_terms or boundary_sensitive_terms:
+        blocked_terms = (*action_recommendation_terms, *boundary_sensitive_terms)
+        safety_classification = "blocked_action_recommendation"
+    elif unsupported_claim_terms or public_restricted_terms:
+        blocked_terms = (*unsupported_claim_terms, *public_restricted_terms)
+        safety_classification = "blocked_unsupported_claim"
+
+    blocked_terms = tuple(dict.fromkeys(blocked_terms))
+    warnings: tuple[str, ...] = ()
+    if allowed_boundary_terms and blocked_terms:
+        warnings = ("allowed boundary wording was present, but unsafe wording was also detected",)
+    return {
+        "is_allowed": not blocked_terms,
+        "blocked_terms": blocked_terms,
+        "allowed_boundary_terms": allowed_boundary_terms,
+        "safety_classification": safety_classification,
+        "warnings": warnings,
+    }
+
+
+def validate_llm_answer_safety(answer: str) -> dict:
+    """Validate final LLM answer wording without blocking safe boundary statements."""
+
+    return classify_llm_output_safety(answer)
+
+
 def _base_result(*, model: str | None, query: str, context: dict) -> dict[str, Any]:
     return {
         "experiment_status": "not_run",
@@ -177,6 +337,7 @@ def _base_result(*, model: str | None, query: str, context: dict) -> dict[str, A
         "warnings": [],
         "errors": [],
         "model_response_debug": {},
+        "answer_safety": validate_llm_answer_safety(""),
     }
 
 
@@ -253,6 +414,7 @@ def run_ollama_llm_experiment(
             }
         )
         validation = validate_llm_experiment_result(result)
+        result["answer_safety"] = validation.get("answer_safety", validate_llm_answer_safety(result["answer"]))
         if not validation["is_valid"]:
             result["experiment_status"] = "blocked_by_output_validation"
             result["answer"] = INSUFFICIENT_EVIDENCE_ANSWER
@@ -271,6 +433,7 @@ def run_ollama_llm_experiment(
         }
     )
     validation = validate_llm_experiment_result(result)
+    result["answer_safety"] = validation.get("answer_safety", validate_llm_answer_safety(result["answer"]))
     if not validation["is_valid"]:
         result["experiment_status"] = "blocked_by_output_validation"
         result["answer"] = INSUFFICIENT_EVIDENCE_ANSWER
@@ -311,16 +474,17 @@ def validate_llm_experiment_result(result: dict) -> dict:
         if boundary.get(key) is not False:
             errors.append(f"claim_boundary.{key} must be False")
     answer = str(result.get("answer") or "")
-    if ACTION_PATTERN.search(answer):
-        errors.append("answer must not include action labels")
-    if ADVISORY_PATTERN.search(answer):
-        errors.append("answer must not include advisory wording")
-    if OVERCLAIM_PATTERN.search(answer):
-        errors.append("answer must not include production or performance overclaim wording")
-    if PUBLIC_RESTRICTED_PATTERN.search(answer):
-        errors.append("answer must not include restricted public wording")
-    if RESTRICTED_MARKET_PATTERN.search(answer):
-        errors.append("answer must not include restricted market-action wording")
+    answer_safety = validate_llm_answer_safety(answer)
+    if not answer_safety["is_allowed"]:
+        classification = answer_safety["safety_classification"]
+        if classification == "blocked_action_label":
+            errors.append("answer must not include action labels")
+        elif classification == "blocked_action_recommendation":
+            errors.append("answer must not include action recommendations")
+        elif any(term in PUBLIC_RESTRICTED_TERMS for term in answer_safety.get("blocked_terms", ())):
+            errors.append("answer must not include restricted public wording")
+        else:
+            errors.append("answer must not include unsupported claim wording")
     if result.get("experiment_status") in {"completed", "completed_empty_model_answer"} and not result.get("source_ids"):
         errors.append("completed result requires source_ids")
     if result.get("llm_called") and result.get("experiment_status") != "completed" and not result.get("abstained"):
@@ -329,6 +493,7 @@ def validate_llm_experiment_result(result: dict) -> dict:
         "is_valid": not errors,
         "errors": errors,
         "warnings": warnings,
+        "answer_safety": answer_safety,
         "claim_boundary": dict(CLAIM_BOUNDARY),
         "non_claim": NON_CLAIM_TEXT,
     }

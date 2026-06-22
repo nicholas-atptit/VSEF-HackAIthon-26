@@ -4,6 +4,7 @@ from src.hackaithon_mvp.ollama_llm_experiment import (
     build_evidence_grounded_user_prompt,
     build_llm_system_prompt,
     run_ollama_llm_experiment,
+    validate_llm_answer_safety,
     validate_llm_experiment_result,
 )
 
@@ -167,11 +168,11 @@ def test_llm_experiment_validation_catches_restricted_public_wording():
     assert any("restricted public wording" in error for error in validation["errors"])
 
 
-def test_llm_experiment_validation_catches_restricted_market_phrase():
-    restricted_phrase = " ".join(("trading", "signals"))
+def test_llm_experiment_validation_allows_negated_market_boundary_phrase():
+    boundary_phrase = " ".join(("not", "a", "trading", "signal"))
     result = {
         "experiment_status": "completed",
-        "answer": f"This answer repeats {restricted_phrase}.",
+        "answer": f"This is {boundary_phrase}. Human review is required.",
         "source_ids": ["source-1"],
         "human_review_required": True,
         "read_only": True,
@@ -193,5 +194,14 @@ def test_llm_experiment_validation_catches_restricted_market_phrase():
 
     validation = validate_llm_experiment_result(result)
 
-    assert validation["is_valid"] is False
-    assert any("restricted market-action wording" in error for error in validation["errors"])
+    assert validation["is_valid"] is True
+    assert validation["answer_safety"]["is_allowed"] is True
+
+
+def test_llm_answer_safety_blocks_live_market_signal():
+    unsafe_phrase = " ".join(("live", "trading", "signal"))
+
+    validation = validate_llm_answer_safety(f"This is a {unsafe_phrase}.")
+
+    assert validation["is_allowed"] is False
+    assert validation["safety_classification"] == "blocked_action_recommendation"

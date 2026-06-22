@@ -24,7 +24,7 @@ CLAIM_BOUNDARY = {
     "human_review_required": True,
     "auto_execution_allowed": False,
 }
-NON_CLAIM_TEXT = "Local deterministic diagnostic checks only; not an execution backtest or performance claim."
+NON_CLAIM_TEXT = "Local deterministic diagnostic checks only; not an execution backtest."
 
 
 def build_dag_backtest_fixture() -> dict:

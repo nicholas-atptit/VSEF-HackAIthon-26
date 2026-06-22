@@ -248,6 +248,7 @@ def validate_market_bar_records(records: tuple[dict, ...]) -> dict:
             errors.append(f"records[{index}]: {exc}")
     if not normalized:
         warnings.append("no valid market bars provided")
+        errors.append("at least one valid market bar is required")
     warnings.extend(_timestamp_warnings(tuple(normalized)))
     return {
         "is_valid": not errors,

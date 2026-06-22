@@ -85,6 +85,14 @@ Current scope:
 | Evidence-grounded Ollama LLM Experiment | Implemented as optional local experiment | Reads retrieved local evidence records only and returns bounded human-reviewed diagnostic explanations |
 | Qwen Ollama Smoke Harness | Implemented as optional local experiment | Uses a temporary system-path evidence store when no store root is provided and removes it before returning |
 | Ollama LLM Readiness Gate | Implemented as optional local experiment | Checks local client, retriever integration, temp-store smoke behavior, unavailable states, and boundary flags |
+| Overnight Self-Improvement Orchestrator | Implemented | Local audit scorecard for demo readiness, claim boundaries, coverage transparency, tuning readiness, and robustness checks |
+| Rich LLM Demo Evidence Pack | Implemented | Reusable read-only local records for optional local Ollama evidence explanation; writes only with explicit store root |
+| Engine Universe Gap Analysis | Implemented | Explains why the latest 77,850-spec sweep has low evidence coverage and which evidence/dependency gaps matter first |
+| Model Tuning Readiness Gate | Implemented | Inspects local labeled forecast-vs-actual artifacts and classifies readiness without running tuning by default |
+| Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
+| Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
+| DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
+| Final Claim Boundary Audit | Implemented | Audits README and public CLI boundary cues before final demo review |
 | Dashboard/API | Later | Web dashboard and API remain later scope |
 
 ## Engine Universe: What the 77k+ Specs Mean
@@ -121,11 +129,23 @@ The sweep reports total discovered specs, attempted specs, completed/skipped/fai
 
 Raw sweep outputs are generated artifacts and must not be committed. The CLI does not write files by default; compact summary writing requires an explicit path.
 
+Latest full-sweep transparency facts:
+
+- total discovered specs: 77,850
+- total attempted specs: 77,850
+- completed specs: 120
+- skipped specs: 77,730
+- failed specs: 0
+- evidence coverage ratio: 0.001541
+
+This low evidence coverage is intentional to surface current gaps instead of fabricating output. Stronger generated-universe claims require more local evidence packs, forecast rows, actual bar coverage, and dependency outputs.
+
 Examples:
 
 ```powershell
 python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --format report
 python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
+python -m src.hackaithon_mvp.engine_universe_gap_analysis --format report
 ```
 
 ## Optional Local Ollama LLM Experiment
@@ -138,12 +158,15 @@ The LLM cannot mutate policies, models, storage, evidence, or decision lanes. It
 
 No cloud API, live market data, provider calls, training, fine-tuning, market-prediction inference, or benchmark rerun is added.
 
+Rich demo records can be generated for optional local Ollama evidence explanation. They remain read-only, and no store is written unless an explicit local store root is provided.
+
 Examples:
 
 ```powershell
 python -m src.hackaithon_mvp.ollama_local_client --check --model qwen3.5:4b
 python -m src.hackaithon_mvp.ollama_llm_readiness --model qwen3.5:4b --format report
 python -m src.hackaithon_mvp.qwen_ollama_smoke --model qwen3.5:4b --format report
+python -m src.hackaithon_mvp.llm_demo_evidence_pack --write-store .tmp_llm_store --format report
 ```
 
 ## How to Run Tests
@@ -155,10 +178,24 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-604 passed
+674 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
+
+## Overnight Self-Improvement and Tuning Readiness
+
+The overnight self-improvement orchestrator is a local audit scorecard for demo-ready with known limitations review. It does not write by default, does not run tuning, and does not upgrade low coverage into stronger claims.
+
+The model tuning readiness gate inspects local labeled forecast-vs-actual artifacts. If suitable local labeled rows and temporal validation are missing, it reports the gap. If limited evidence exists, it can classify policy-search readiness, but tuning output still requires explicit local temp output and human review.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.model_tuning_readiness --format report
+python -m src.hackaithon_mvp.final_claim_boundary_audit --format report
+python -m src.hackaithon_mvp.overnight_self_improvement --format report
+```
 
 ## Gateway-ready Diagnostic Engine Core
 
@@ -393,9 +430,14 @@ python -m src.hackaithon_mvp.diagnostic_engine --payload-demo --format report
 python -m src.hackaithon_mvp.diagnostic_engine_hardening_gate --format report
 python -m src.hackaithon_mvp.engine_universe_forecast_sweep --limit 1000 --format report
 python -m src.hackaithon_mvp.engine_universe_sweep_readiness --format report
+python -m src.hackaithon_mvp.engine_universe_gap_analysis --format report
 python -m src.hackaithon_mvp.ollama_local_client --check --model qwen3.5:4b
 python -m src.hackaithon_mvp.ollama_llm_readiness --model qwen3.5:4b --format report
 python -m src.hackaithon_mvp.qwen_ollama_smoke --model qwen3.5:4b --format report
+python -m src.hackaithon_mvp.llm_demo_evidence_pack --write-store .tmp_llm_store --format report
+python -m src.hackaithon_mvp.model_tuning_readiness --format report
+python -m src.hackaithon_mvp.final_claim_boundary_audit --format report
+python -m src.hackaithon_mvp.overnight_self_improvement --format report
 python -m src.hackaithon_mvp.llm_storage_contract
 python -m src.hackaithon_mvp.llm_storage_readiness --format report
 python -m src.hackaithon_mvp.local_evidence_store --demo-write --store-root .tmp_llm_store
@@ -442,6 +484,11 @@ This MVP is bounded by the following rules:
 * DAG harness is diagnostic-only and not a benchmark rerun
 * Risk Engine V3 remains diagnostic-only
 * fine-tune control plane produces human-review candidates only
+* tuning readiness/control plane does not run blindly and requires local labeled rows plus temporal validation
+* current 77,850 generated diagnostic engine-spec universe has low evidence coverage that is transparently analyzed
+* optional local Ollama evidence explanation reads retrieved evidence only
+* system is demo-ready with known limitations, not an operating production system
+* generated outputs remain untracked
 * no server database or production vector database is implemented
 * LLM retrieval cannot mutate policies, models, database state, or decision lanes
 * human review required
