@@ -51,14 +51,31 @@ def test_score_mentions_low_coverage_and_does_not_overstate_readiness():
                 "check_status": "completed",
                 "result": {"readiness_status": "not_ready_no_labeled_data"},
             },
+            "release_accuracy_report": {
+                "check_status": "completed",
+                "result": {"release_accuracy_status": "not_ready_no_forecast_actual_rows"},
+            },
+            "forecast_actual_artifact_discovery": {
+                "check_status": "completed",
+                "result": {"discovery_status": "completed", "candidate_file_count": 0},
+            },
+            "release_model_tuning_gate": {
+                "check_status": "completed",
+                "result": {"tuning_gate_status": "not_ready_no_labeled_data"},
+            },
+            "eligible_model_policy_tuning_availability": {
+                "check_status": "completed",
+                "result": {"tuning_status": "no_eligible_models"},
+            },
         },
         "test_results": {"full_suite_passed": True},
     }
 
     score = score_self_improvement_readiness(result)
 
-    assert score["overall_score_0_100"] == 100
-    assert score["self_improvement_status"] == "needs_evidence_before_stronger_claims"
+    assert score["overall_score_0_100"] == 85
+    assert score["self_improvement_status"] == "needs_forecast_actual_accuracy_before_release"
+    assert "forecast_actual_accuracy_missing_before_release" in score["blocking_issues"]
 
 
 def test_self_improvement_audit_runs_and_report_renders():
@@ -67,6 +84,7 @@ def test_self_improvement_audit_runs_and_report_renders():
 
     assert "overall_score_0_100" in result
     assert "Engine universe evidence coverage" in report
+    assert "Release accuracy status" in report
     assert "Evidence coverage ratio" in report
     assert result["overall_score_0_100"] == 100
     assert result["self_improvement_status"] == "needs_evidence_before_stronger_claims"
@@ -99,3 +117,4 @@ def test_overnight_self_improvement_cli_accepts_external_test_pass_flag():
     )
 
     assert "Overall score: 100" in completed.stdout
+    assert "needs_evidence_before_stronger_claims" in completed.stdout

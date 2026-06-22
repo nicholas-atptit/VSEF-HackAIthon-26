@@ -49,6 +49,8 @@ Current scope:
 | CLI Demo Scenario / End-to-End Local Run | Implemented | Tiny deterministic local fixture run across DAG, actual outcome construction, evaluation, and optional persistence |
 | Submission Packaging / Public Demo Readiness Pass | Implemented | Local readiness checker for README boundaries, safe demo commands, and manual review items |
 | Forecast-vs-Actual Evaluation | Implemented | Local actual data input required before accuracy can be calculated |
+| Forecast-vs-Actual Artifact Discovery | Implemented | Scans safe local paths for candidate forecast-vs-actual rows and reports schema gaps; no accuracy calculation |
+| Release Forecast-vs-Actual Accuracy Evaluation | Implemented | Computes directional, numeric, probability, grouped, and baseline metrics only from explicit local labeled rows |
 | Legacy Forecast-Actual Adapter | Implemented | Converts local legacy row artifacts into the MVP evaluator schema |
 | Quant Core Performance Attribution + Calibration Gate | Implemented | Uses local verified rows to identify eligible, strong, weak, and insufficient diagnostic slices |
 | Quant Core Accuracy Optimizer | Implemented | Simulates validation-split diagnostic policies; improvements are coverage-dependent and validation-measured only |
@@ -89,6 +91,9 @@ Current scope:
 | Rich LLM Demo Evidence Pack | Implemented | Reusable read-only local records for optional local Ollama evidence explanation; writes only with explicit store root |
 | Engine Universe Gap Analysis | Implemented | Explains why the latest 77,850-spec sweep has low evidence coverage and which evidence/dependency gaps matter first |
 | Model Tuning Readiness Gate | Implemented | Inspects local labeled forecast-vs-actual artifacts and classifies readiness without running tuning by default |
+| Release Model Tuning Gate | Implemented | Classifies local rows as evaluation-only, policy-threshold eligible, or feature-matrix ready; no tuning by default |
+| Eligible Model Policy Tuner | Implemented | Tunes only eligible model/horizon probability thresholds with temporal validation and explicit temp output |
+| Release Accuracy Report | Implemented | Combines artifact discovery, local accuracy metrics, baselines, tuning readiness, and release gate status |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -178,21 +183,41 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-674 passed
+705 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
+
+## Release Accuracy and Tuning Gates
+
+Release accuracy requires local labeled forecast-vs-actual rows. If those rows are missing for a model, horizon, ticker, or generated spec, the release gates return skip reasons instead of fabricating metrics.
+
+The release evaluator computes accuracy only for explicit local rows. It reports directional accuracy, balanced accuracy, confusion matrix, Wilson interval, numeric error when return columns exist, probability metrics when score columns exist, grouped metrics, and baseline comparisons. It does not create labels, fetch data, run models, or write files by default.
+
+The release tuning gate is a control layer. If only forecast outputs, actual labels, and probability scores are available, the eligible tuner can run policy-threshold search only. It uses a temporal train/validation split, reports pre-tune and post-tune validation metrics, and writes output only to an explicit `.tmp_tuning*` path. True model hyperparameter work requires a local feature matrix, target labels, temporal validation, no leakage columns, and human review.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.forecast_actual_artifact_discovery --format report
+python -m src.hackaithon_mvp.forecast_accuracy_evaluator --discover --format report
+python -m src.hackaithon_mvp.forecast_accuracy_evaluator --input path\to\forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.release_accuracy_report --discover --format report
+python -m src.hackaithon_mvp.release_accuracy_report --input path\to\forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.eligible_model_policy_tuner --input path\to\forecast_actual_rows.jsonl --write-report .tmp_tuning_report.json --format report
+```
 
 ## Overnight Self-Improvement and Tuning Readiness
 
 The overnight self-improvement orchestrator is a local audit scorecard for demo-ready with known limitations review. It does not write by default, does not run tuning, and does not upgrade low coverage into stronger claims.
 
-The model tuning readiness gate inspects local labeled forecast-vs-actual artifacts. If suitable local labeled rows and temporal validation are missing, it reports the gap. If limited evidence exists, it can classify policy-search readiness, but tuning output still requires explicit local temp output and human review.
+The model tuning readiness gate inspects local labeled forecast-vs-actual artifacts. If suitable local labeled rows and temporal validation are missing, it reports the gap. If limited evidence exists, it can classify policy-search readiness, but tuning output still requires explicit local temp output and human review. The overnight scorecard now remains `needs_forecast_actual_accuracy_before_release` when no explicit local accuracy rows have been evaluated.
 
 Examples:
 
 ```powershell
 python -m src.hackaithon_mvp.model_tuning_readiness --format report
+python -m src.hackaithon_mvp.release_model_tuning_gate --format report
 python -m src.hackaithon_mvp.final_claim_boundary_audit --format report
 python -m src.hackaithon_mvp.overnight_self_improvement --format report
 ```

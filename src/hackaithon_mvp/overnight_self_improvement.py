@@ -11,12 +11,14 @@ from src.hackaithon_mvp.diagram_demo_readiness import build_diagram_demo_readine
 from src.hackaithon_mvp.engine_input_contract import build_minimal_engine_input_fixture
 from src.hackaithon_mvp.engine_universe_gap_analysis import run_engine_universe_gap_analysis
 from src.hackaithon_mvp.engine_universe_forecast_sweep import build_engine_universe_sweep_plan
+from src.hackaithon_mvp.eligible_model_policy_tuner import tune_all_eligible_models
 from src.hackaithon_mvp.final_claim_boundary_audit import run_final_claim_boundary_audit
 from src.hackaithon_mvp.gateway_backtest_readiness import run_gateway_backtest_readiness_gate
 from src.hackaithon_mvp.llm_demo_evidence_pack import build_rich_llm_demo_records
 from src.hackaithon_mvp.model_tuning_readiness import run_model_tuning_readiness_gate
 from src.hackaithon_mvp.ollama_local_client import DEFAULT_OLLAMA_MODEL, check_ollama_availability
 from src.hackaithon_mvp.public_demo_readiness import build_public_demo_readiness_summary
+from src.hackaithon_mvp.release_accuracy_report import build_release_accuracy_report
 from src.hackaithon_mvp.risk_engine_v3 import run_risk_engine_v3
 
 
@@ -53,6 +55,10 @@ def build_self_improvement_plan() -> dict:
             "gateway_backtest_readiness",
             "engine_universe_sweep_readiness",
             "engine_universe_gap_analysis",
+            "forecast_actual_artifact_discovery",
+            "release_accuracy_report",
+            "release_model_tuning_gate",
+            "eligible_model_policy_tuning_availability",
             "model_tuning_readiness",
             "final_claim_boundary_audit",
             "ollama_llm_readiness",
@@ -80,6 +86,14 @@ def _safe_call(name: str, func) -> dict[str, Any]:
 def run_self_improvement_audit(*, test_results: dict[str, Any] | None = None) -> dict:
     """Run bounded local checks and return a readiness audit result."""
 
+    release_accuracy_check = _safe_call(
+        "release_accuracy_report",
+        lambda: build_release_accuracy_report(discover=True),
+    )
+    release_accuracy_result = release_accuracy_check.get("result", {})
+    release_discovery = release_accuracy_result.get("artifact_discovery")
+    release_tuning_readiness = release_accuracy_result.get("tuning_readiness")
+    release_tuning_result = release_accuracy_result.get("tuning_result")
     checks = {
         "public_demo_readiness": _safe_call("public_demo_readiness", build_public_demo_readiness_summary),
         "diagram_demo_readiness": _safe_call("diagram_demo_readiness", build_diagram_demo_readiness_summary),
@@ -93,6 +107,22 @@ def run_self_improvement_audit(*, test_results: dict[str, Any] | None = None) ->
             },
         ),
         "engine_universe_gap_analysis": _safe_call("engine_universe_gap_analysis", run_engine_universe_gap_analysis),
+        "forecast_actual_artifact_discovery": {
+            "check_status": "completed" if isinstance(release_discovery, dict) else "failed",
+            "result": release_discovery if isinstance(release_discovery, dict) else {},
+            "errors": [] if isinstance(release_discovery, dict) else ["forecast_actual_artifact_discovery_missing"],
+        },
+        "release_accuracy_report": release_accuracy_check,
+        "release_model_tuning_gate": {
+            "check_status": "completed" if isinstance(release_tuning_readiness, dict) else "failed",
+            "result": release_tuning_readiness if isinstance(release_tuning_readiness, dict) else {},
+            "errors": [] if isinstance(release_tuning_readiness, dict) else ["release_model_tuning_gate_missing"],
+        },
+        "eligible_model_policy_tuning_availability": {
+            "check_status": "completed" if isinstance(release_tuning_result, dict) else "completed",
+            "result": release_tuning_result if isinstance(release_tuning_result, dict) else tune_all_eligible_models([]),
+            "errors": [],
+        },
         "model_tuning_readiness": _safe_call("model_tuning_readiness", run_model_tuning_readiness_gate),
         "final_claim_boundary_audit": _safe_call("final_claim_boundary_audit", run_final_claim_boundary_audit),
         "ollama_llm_readiness": _safe_call(
@@ -159,6 +189,10 @@ def score_self_improvement_readiness(result: dict) -> dict:
     llm = _check_result(result, "ollama_llm_readiness")
     gap = _check_result(result, "engine_universe_gap_analysis")
     tuning = _check_result(result, "model_tuning_readiness")
+    artifact_discovery = _check_result(result, "forecast_actual_artifact_discovery")
+    release_accuracy = _check_result(result, "release_accuracy_report")
+    release_tuning = _check_result(result, "release_model_tuning_gate")
+    eligible_tuning = _check_result(result, "eligible_model_policy_tuning_availability")
 
     score = 0
     tests_pass = bool(result.get("test_results", {}).get("full_suite_passed")) if isinstance(result.get("test_results"), dict) else None
@@ -210,19 +244,30 @@ def score_self_improvement_readiness(result: dict) -> dict:
     else:
         blocking.append("tuning_readiness_status_invalid")
 
+    accuracy_missing = release_accuracy.get("release_accuracy_status") == "not_ready_no_forecast_actual_rows"
+    if accuracy_missing:
+        blocking.append("forecast_actual_accuracy_missing_before_release")
+        score = min(score, 85)
+    tuning_deferred_no_labeled_data = release_tuning.get("tuning_gate_status") == "not_ready_no_labeled_data"
+
     high_priority = [
         "claim-boundary audit included in score",
         "coverage gap transparency included in score",
         "tuning readiness classified without training",
         "gateway/risk/DAG checks included",
+        "release accuracy gate included",
     ]
     deferred = [
         "stronger generated-universe claims deferred until local evidence coverage improves",
         "model training and fine-tuning deferred",
         "live/provider/cloud behavior deferred",
     ]
+    if tuning_deferred_no_labeled_data or eligible_tuning.get("tuning_status") == "no_eligible_models":
+        deferred.append("tuning_deferred_no_labeled_data")
     if tests_pass is False:
         status = "blocked"
+    elif accuracy_missing:
+        status = "needs_forecast_actual_accuracy_before_release"
     elif not claim_pass:
         status = "ready_with_known_limitations" if score >= 50 else "blocked"
     elif coverage_ratio == 0.001541:
@@ -240,6 +285,11 @@ def score_self_improvement_readiness(result: dict) -> dict:
         "high_priority_improvements": high_priority,
         "safe_completed_checks": safe_completed,
         "unsafe_or_deferred_items": deferred,
+        "forecast_actual_artifact_discovery_status": artifact_discovery.get("discovery_status"),
+        "forecast_actual_candidate_files": artifact_discovery.get("candidate_file_count"),
+        "release_accuracy_status": release_accuracy.get("release_accuracy_status"),
+        "release_model_tuning_gate_status": release_tuning.get("tuning_gate_status"),
+        "eligible_model_policy_tuning_status": eligible_tuning.get("tuning_status"),
         "claim_boundary": dict(CLAIM_BOUNDARY),
         "non_claim": NON_CLAIM_TEXT,
         "human_review_required": True,
@@ -252,6 +302,9 @@ def render_self_improvement_report(result: dict) -> str:
     gap = _check_result(result, "engine_universe_gap_analysis")
     tuning = _check_result(result, "model_tuning_readiness")
     claim = _check_result(result, "final_claim_boundary_audit")
+    release_accuracy = _check_result(result, "release_accuracy_report")
+    release_tuning = _check_result(result, "release_model_tuning_gate")
+    discovery = _check_result(result, "forecast_actual_artifact_discovery")
     blocking_lines = [f"- {issue}" for issue in result.get("blocking_issues", [])] or ["- none"]
     lines = [
         "# Overnight Self-Improvement Scorecard",
@@ -260,6 +313,9 @@ def render_self_improvement_report(result: dict) -> str:
         f"Overall score: {result.get('overall_score_0_100')}",
         f"Claim audit status: {claim.get('audit_status')}",
         f"Tuning readiness: {tuning.get('readiness_status')}",
+        f"Release accuracy status: {release_accuracy.get('release_accuracy_status')}",
+        f"Release tuning gate: {release_tuning.get('tuning_gate_status')}",
+        f"Forecast-vs-actual candidate files: {discovery.get('candidate_file_count')}",
         "",
         "Engine universe evidence coverage:",
         f"- Generated diagnostic spec universe: {gap.get('total_specs_discovered')}",
