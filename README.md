@@ -21,7 +21,7 @@ Current scope:
 - offline local-file gateway only
 - no live data
 - no provider API calls
-- bounded local model training/tuning only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, `.tmp_accuracy_maximization`, or `.tmp_forecast_repair` workflows
+- bounded local model training/tuning only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, `.tmp_accuracy_maximization`, `.tmp_forecast_repair`, or `.tmp_forecast_edge` workflows
 - generated forecasts/evidence stay untracked and are not committed
 - no benchmark rerun
 - no action-oriented output
@@ -117,6 +117,13 @@ Current scope:
 | Selective Forecast Mode | Implemented | Emits diagnostic forecast retained rows only for allowed robust slices and abstains weak slices with explicit reasons |
 | Fresh Validation Protocol | Implemented | Builds post-hoc three-way time splits and nested walk-forward metadata while marking prior final holdout reuse honestly |
 | Forecast Repair Orchestrator | Implemented | Runs the local repair pipeline under `.tmp_forecast_repair`, reports coverage with accuracy, and reruns generated-evidence engine coverage |
+| Forecast Edge Planner | Implemented | Inspects local OHLCV coverage, clean target counts, prior failed metrics, market proxy availability, cross-sectional panels, and target-horizon priorities |
+| Forecast Edge Feature Builder | Implemented | Builds richer non-leaky market-context, liquidity, technical, and cross-sectional local features ending at or before the forecast timestamp |
+| Clean Forecast Target Builder | Implemented | Builds non-overlapping h1/h5/h10/h20 direction targets from local bars with duplicate-key checks and timestamp-order validation |
+| Forecast Data Expansion Contract | Implemented as disabled contract | Provider/local expansion is disabled by default, requires explicit environment flags, exposes no secrets, and writes only under `.tmp_forecast_edge` |
+| Forecast Edge Model Trainer | Implemented | Trains bounded clean local model groups with three-way temporal splits, validation-only selection, and one holdout check for strict slice gating |
+| Forecast Edge Selector | Implemented | Allows only robust clean holdout slices that beat random and majority baselines with positive MCC, while disclosing retained coverage |
+| Forecast Edge Orchestrator | Implemented | Runs planning, optional disabled expansion, clean targets, rich features, bounded training, strict selection, retained evidence, and coverage-aware reporting |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -335,6 +342,75 @@ python -m src.hackaithon_mvp.forecast_repair_orchestrator --output-root .tmp_for
 python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_forecast_repair\evidence --output-root .tmp_forecast_repair\engine_sweep --format report
 ```
 
+## Forecast Edge Pipeline
+
+The forecast edge sprint adds a cleaner target protocol and richer local feature set before any slice is allowed to emit diagnostic forecast rows. It prioritizes h1/h5/h10/h20, builds non-overlapping targets, adds market-context, liquidity, technical, and cross-sectional features, trains bounded local model groups with validation-only selection, and keeps strict holdout gates for retained slices.
+
+Provider/data expansion remains disabled by default. It requires `ALLOW_PROVIDER_DATA_FETCH=1` plus explicit provider configuration, does not expose credential-like values, and writes only under `.tmp_forecast_edge`.
+
+Latest strict local forecast edge run (`--max-models 300`, `--min-slice-rows 300`):
+
+- generated artifacts root: `.tmp_forecast_edge`
+- data expansion used: no
+- local OHLCV rows loaded: 88,048
+- clean target rows: 118,768
+- clean rows by horizon: h1 88,012; h5 17,585; h10 8,788; h20 4,383
+- duplicate target keys dropped: 0
+- overlapping target windows dropped: 232,160
+- rows missing valid future bars dropped: 1,264
+- feature blocks generated: market_context, liquidity, technical, cross_sectional
+- feature columns generated: 19
+- model groups attempted/trained/tuned: 33 / 32 / 32
+- candidate fits attempted: 297
+- holdout forecast rows evaluated before selection: 15,819
+- allowed forecast slices: 7
+- rejected forecast slices: 26
+- retained forecast coverage: 0.208926
+- retained holdout accuracy: 0.557035
+- retained holdout balanced accuracy: 0.557273
+- retained holdout MCC: 0.116346
+- retained-row baselines: random 0.500000; majority 0.501362; previous-direction 0.490502
+- random baseline beaten on retained rows: yes
+- majority baseline beaten on retained rows: yes
+- previous-direction baseline beaten on retained rows: yes
+- best allowed horizon: h10, balanced accuracy 0.556390
+- best ticker on retained rows: MBB, balanced accuracy 0.784616
+- best ticker-horizon on retained rows: MBB h10, balanced accuracy 0.784616
+- generated-evidence engine universe: skipped after retained evidence because the existing runner currently allows earlier temp roots but not `.tmp_forecast_edge`
+- forecast edge status: `forecast_edge_found`
+- selective clean-local forecast claim allowed: yes, with coverage disclosed
+- broad performance claim allowed: no
+
+Allowed retained slices:
+
+- GLOBAL h10 random_forest: balanced accuracy 0.556390, accuracy 0.551250, MCC 0.112808, holdout rows 800
+- BCM h1 hist_gradient_boosting: balanced accuracy 0.543952, accuracy 0.546218, MCC 0.089369, holdout rows 357
+- BID h1 gradient_boosting: balanced accuracy 0.543790, accuracy 0.550000, MCC 0.089291, holdout rows 480
+- FPT h1 extra_trees: balanced accuracy 0.581611, accuracy 0.580645, MCC 0.163840, holdout rows 527
+- GVR h1 extra_trees: balanced accuracy 0.565498, accuracy 0.565333, MCC 0.131096, holdout rows 375
+- TPB h1 hist_gradient_boosting: balanced accuracy 0.567310, accuracy 0.569832, MCC 0.136914, holdout rows 358
+- VIB h1 gradient_boosting: balanced accuracy 0.527651, accuracy 0.536765, MCC 0.082890, holdout rows 408
+
+Acceptable bounded wording:
+
+```text
+Selective forecast edge found on clean local h1/h10 slices: balanced accuracy 0.557273 at 20.8926% coverage, human review required.
+```
+
+This is not enough for a broad forecast-accuracy claim. Most slices are still rejected by strict gates, so coverage must remain attached to the metric.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.forecast_edge_planner --format report
+python -m src.hackaithon_mvp.clean_forecast_target_builder --format report
+python -m src.hackaithon_mvp.forecast_edge_feature_builder --format report
+python -m src.hackaithon_mvp.forecast_data_expansion --output-root .tmp_forecast_edge --format report
+python -m src.hackaithon_mvp.forecast_edge_model_trainer --input .tmp_forecast_edge\edge_training_rows.jsonl --max-models 300 --max-workers 1 --min-slice-rows 300 --format report
+python -m src.hackaithon_mvp.forecast_edge_selector --input .tmp_forecast_edge\forecast_edge_training_summary.json --format report
+python -m src.hackaithon_mvp.forecast_edge_orchestrator --output-root .tmp_forecast_edge --max-models 300 --max-workers 1 --min-slice-rows 300 --format report
+```
+
 ## Optional Local Ollama LLM Experiment
 
 The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
@@ -365,7 +441,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Latest local result:
 
 ```text
-766 passed
+780 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
