@@ -59,7 +59,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def _validate_root(path: str | Path, label: str) -> Path:
     root = Path(path)
-    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization", ".tmp_forecast_repair")
     if not any(part.lower().startswith(allowed) for part in root.parts):
         raise ValueError(f"{label} must be under an explicit local temp model-run root")
     root.mkdir(parents=True, exist_ok=True)

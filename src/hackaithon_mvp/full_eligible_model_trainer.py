@@ -75,7 +75,7 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def _output_root(path: str | Path) -> Path:
     root = Path(path)
-    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization", ".tmp_forecast_repair")
     if not any(part.lower().startswith(allowed) for part in root.parts):
         raise ValueError("output_root must be an explicit local temp model-run root or a child path")
     root.mkdir(parents=True, exist_ok=True)
@@ -173,6 +173,45 @@ def _rows_for_spec(spec: dict, dataset_rows: list[dict]) -> list[dict]:
     return rows
 
 
+def _slice_row_count(rows: list[dict], *, horizon: int, target: str) -> int:
+    count = 0
+    for row in rows:
+        if int(row.get("horizon", -1)) == horizon and _target_value(row, target) is not None:
+            count += 1
+    return count
+
+
+def _prioritize_specs(
+    specs: list[dict],
+    dataset_rows: list[dict],
+    *,
+    clean_slices_only: bool,
+    prioritize_horizons: tuple[int, ...],
+    min_slice_rows: int,
+) -> list[dict]:
+    horizon_rank = {int(horizon): index for index, horizon in enumerate(prioritize_horizons)}
+    enriched = []
+    for spec in specs:
+        horizon = int(spec.get("horizon", 0))
+        target = str(spec.get("target"))
+        slice_rows = _slice_row_count(dataset_rows, horizon=horizon, target=target)
+        if clean_slices_only and slice_rows < int(min_slice_rows):
+            continue
+        item = dict(spec)
+        item["_available_slice_rows"] = slice_rows
+        enriched.append(item)
+    enriched.sort(
+        key=lambda item: (
+            horizon_rank.get(int(item.get("horizon", 0)), len(horizon_rank)),
+            -int(item.get("_available_slice_rows", 0)),
+            str(item.get("model_family")),
+            str(item.get("model_key")),
+            str(item.get("target")),
+        )
+    )
+    return enriched
+
+
 def _temporal_split(rows: list[dict], train_fraction: float = 0.7) -> tuple[list[dict], list[dict]]:
     if len(rows) < 2:
         return rows, []
@@ -196,6 +235,24 @@ def _purged_or_temporal_split(rows: list[dict], horizon_steps: int) -> tuple[lis
         "embargoed_row_count": split.get("embargoed_row_count"),
         "purged_split_status": split.get("split_status"),
     }
+
+
+def _deoverlap_supervised_rows(rows: list[dict], *, horizon_steps: int) -> list[dict]:
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in rows:
+        key = (str(row.get("ticker") or "unspecified"), str(row.get("horizon") or horizon_steps))
+        grouped.setdefault(key, []).append(row)
+    retained: list[dict] = []
+    steps = max(1, int(horizon_steps))
+    for group_rows in grouped.values():
+        ordered = sorted(group_rows, key=lambda item: (str(item.get("timestamp") or ""), str(item.get("ticker") or "")))
+        last_index: int | None = None
+        for index, row in enumerate(ordered):
+            if last_index is None or index - last_index >= steps:
+                retained.append(row)
+                last_index = index
+    retained.sort(key=lambda item: (str(item.get("timestamp") or ""), str(item.get("ticker") or "")))
+    return retained
 
 
 def _inner_split(rows: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -621,12 +678,17 @@ def train_one_model_spec(
     *,
     output_root: str,
     timeout_seconds_per_model: int | None = None,
+    deoverlap: bool = False,
+    min_slice_rows: int = MIN_ROWS_PER_MODEL,
 ) -> dict:
     """Train one eligible model group and append compact validation rows."""
 
     started = time.monotonic()
     rows = _rows_for_spec(spec, dataset_rows)
-    if len(rows) < MIN_ROWS_PER_MODEL:
+    if deoverlap:
+        rows = _deoverlap_supervised_rows(rows, horizon_steps=int(spec["horizon"]))
+    minimum_rows = max(MIN_ROWS_PER_MODEL, int(min_slice_rows))
+    if len(rows) < minimum_rows:
         return {
             "model_key": spec["model_key"],
             "target": spec["target"],
@@ -634,6 +696,7 @@ def train_one_model_spec(
             "training_status": "skipped",
             "skip_reason": "insufficient_rows_for_model_horizon_target",
             "available_rows": len(rows),
+            "minimum_rows": minimum_rows,
         }
     train_rows, validation_rows, split_diagnostics = _purged_or_temporal_split(rows, int(spec["horizon"]))
     if len(validation_rows) < MIN_VALIDATION_ROWS:
@@ -708,6 +771,8 @@ def train_one_model_spec(
         "selected_hyperparameters": tuning.get("selected_hyperparameters"),
         "selected_threshold": tuning.get("selected_threshold"),
         "split_diagnostics": split_diagnostics,
+        "deoverlap_requested": deoverlap,
+        "min_slice_rows": min_slice_rows,
         "forecast_rows_written": len(validation_forecasts),
         "evidence_record": evidence_record,
         "elapsed_seconds": elapsed,
@@ -732,11 +797,18 @@ def run_full_eligible_model_training(
     max_models: int | None = None,
     max_workers: int = 1,
     timeout_seconds_per_model: int = 120,
+    clean_slices_only: bool = False,
+    deoverlap: bool = False,
+    prioritize_horizons: tuple[int, ...] = (1, 5, 10, 20),
+    min_slice_rows: int = MIN_ROWS_PER_MODEL,
+    selection_metric: str = "balanced_accuracy",
 ) -> dict:
     """Run bounded local training for all eligible model groups."""
 
     if max_workers < 1:
         raise ValueError("max_workers must be at least 1")
+    if selection_metric not in {"balanced_accuracy", "holdout_balanced_accuracy", "directional_accuracy", "mcc"}:
+        raise ValueError("selection_metric must be balanced_accuracy, holdout_balanced_accuracy, directional_accuracy, or mcc")
     root = _output_root(output_root)
     forecast_path = root / "forecast_actual_rows.jsonl"
     if not forecast_path.exists():
@@ -744,6 +816,13 @@ def run_full_eligible_model_training(
     dataset_rows = _load_jsonl(dataset_path)
     discovered = discover_trainable_model_specs()
     specs = discovered["trainable_model_specs"]
+    specs = _prioritize_specs(
+        specs,
+        dataset_rows,
+        clean_slices_only=clean_slices_only,
+        prioritize_horizons=tuple(int(item) for item in prioritize_horizons),
+        min_slice_rows=int(min_slice_rows),
+    )
     if max_models is not None:
         specs = specs[: int(max_models)]
     checkpoint_path = root / "training_checkpoint.json"
@@ -764,6 +843,8 @@ def run_full_eligible_model_training(
             dataset_rows,
             output_root=str(root),
             timeout_seconds_per_model=timeout_seconds_per_model,
+            deoverlap=deoverlap,
+            min_slice_rows=min_slice_rows if clean_slices_only else MIN_ROWS_PER_MODEL,
         )
         elapsed = time.monotonic() - started
         if elapsed > timeout_seconds_per_model:
@@ -816,6 +897,11 @@ def run_full_eligible_model_training(
         "max_workers_requested": max_workers,
         "max_workers_used": 1,
         "timeout_seconds_per_model": timeout_seconds_per_model,
+        "clean_slices_only": clean_slices_only,
+        "deoverlap": deoverlap,
+        "prioritize_horizons": list(prioritize_horizons),
+        "min_slice_rows": min_slice_rows,
+        "selection_metric": selection_metric,
         "forecast_actual_output": str(forecast_path),
         "evidence_record_output": str(root / "model_evidence_records.json"),
         "tuning_report_output": str(root / "tuning_report.json"),
@@ -862,6 +948,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-models", type=int, default=None)
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--timeout-seconds-per-model", type=int, default=120)
+    parser.add_argument("--clean-slices-only", action="store_true")
+    parser.add_argument("--deoverlap", action="store_true")
+    parser.add_argument("--prioritize-horizons", default="1,5,10,20")
+    parser.add_argument("--min-slice-rows", type=int, default=MIN_ROWS_PER_MODEL)
+    parser.add_argument(
+        "--selection-metric",
+        choices=("balanced_accuracy", "holdout_balanced_accuracy", "directional_accuracy", "mcc"),
+        default="balanced_accuracy",
+    )
     parser.add_argument("--format", choices=("json", "report"), default="json")
     return parser
 
@@ -874,6 +969,11 @@ def main(argv: list[str] | None = None) -> int:
         max_models=args.max_models,
         max_workers=args.max_workers,
         timeout_seconds_per_model=args.timeout_seconds_per_model,
+        clean_slices_only=args.clean_slices_only,
+        deoverlap=args.deoverlap,
+        prioritize_horizons=tuple(int(item.strip()) for item in str(args.prioritize_horizons).split(",") if item.strip()),
+        min_slice_rows=args.min_slice_rows,
+        selection_metric=args.selection_metric,
     )
     if args.format == "report":
         print(render_full_eligible_model_training_report(result), end="")

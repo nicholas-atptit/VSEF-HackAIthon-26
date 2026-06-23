@@ -104,3 +104,29 @@ def test_accuracy_maximization_output_root_is_allowed(tmp_path):
 
     assert result["training_status"] == "completed"
     assert (output_root / "forecast_actual_rows.jsonl").exists()
+
+
+def test_clean_slice_training_options_are_reported(tmp_path):
+    output_root = tmp_path / ".tmp_forecast_repair"
+    dataset_path = tmp_path / "dataset.jsonl"
+    _write_dataset(dataset_path, _dataset_rows(count=220, horizon=1))
+
+    result = run_full_eligible_model_training(
+        dataset_path=str(dataset_path),
+        output_root=str(output_root),
+        max_models=1,
+        max_workers=1,
+        timeout_seconds_per_model=30,
+        clean_slices_only=True,
+        deoverlap=True,
+        prioritize_horizons=(1, 5, 10, 20),
+        min_slice_rows=40,
+        selection_metric="holdout_balanced_accuracy",
+    )
+
+    assert result["clean_slices_only"] is True
+    assert result["deoverlap"] is True
+    assert result["prioritize_horizons"] == [1, 5, 10, 20]
+    assert result["min_slice_rows"] == 40
+    assert result["selection_metric"] == "holdout_balanced_accuracy"
+    assert result["attempted_model_specs"] == 1

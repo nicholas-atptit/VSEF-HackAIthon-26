@@ -21,7 +21,7 @@ Current scope:
 - offline local-file gateway only
 - no live data
 - no provider API calls
-- bounded local model training/tuning only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, or `.tmp_accuracy_maximization` workflows
+- bounded local model training/tuning only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, `.tmp_accuracy_maximization`, or `.tmp_forecast_repair` workflows
 - generated forecasts/evidence stay untracked and are not committed
 - no benchmark rerun
 - no action-oriented output
@@ -111,6 +111,12 @@ Current scope:
 | Diagnostic Ensemble Selector | Implemented | Builds validation-only majority, probability-average, weighted, and slice-champion ensemble candidates for fixed-policy review |
 | Final Holdout Evaluator | Implemented | Scores a fixed selected policy on latest untouched local holdout rows with baselines, Wilson interval, and coverage |
 | Accuracy Maximization Orchestrator | Implemented | Runs the bounded local feature/model/gate/ensemble/holdout workflow under `.tmp_accuracy_maximization` and reports non-improvements honestly |
+| Forecast Data Repair Audit | Implemented | Audits duplicate prediction keys, overlapping target windows, label persistence, timestamp order, imbalance, and leakage risk in local rows |
+| De-overlapped Forecast Dataset | Implemented | Removes duplicate ticker/model/horizon/timestamp keys and overlapping target windows without fabricating labels |
+| Robust Forecast Slice Gate | Implemented | Allows only ticker/horizon/model slices that clear strict validation, holdout, baseline, MCC, leakage, overlap, and row-count gates |
+| Selective Forecast Mode | Implemented | Emits diagnostic forecast retained rows only for allowed robust slices and abstains weak slices with explicit reasons |
+| Fresh Validation Protocol | Implemented | Builds post-hoc three-way time splits and nested walk-forward metadata while marking prior final holdout reuse honestly |
+| Forecast Repair Orchestrator | Implemented | Runs the local repair pipeline under `.tmp_forecast_repair`, reports coverage with accuracy, and reruns generated-evidence engine coverage |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -281,6 +287,54 @@ python -m src.hackaithon_mvp.final_holdout_evaluator --input .tmp_accuracy_maxim
 python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_accuracy_maximization\evidence --output-root .tmp_accuracy_maximization\engine_sweep --format report
 ```
 
+## Forecast Repair and Selective Forecast Mode
+
+The forecast repair sprint added explicit data-quality auditing, duplicate-key removal, target-window de-overlap, post-hoc fresh-validation protocol metadata, strict robust slice gates, and a selective diagnostic forecast mode.
+
+The goal is not to rescue a weak global holdout by hiding coverage. The mode emits diagnostic forecast retained rows only when a ticker/horizon/model slice clears strict local evidence gates. Otherwise it abstains due to insufficient evidence and keeps human review required.
+
+Latest local forecast repair run (`--max-models 300`, `--min-slice-rows 300`):
+
+- generated artifacts root: `.tmp_forecast_repair`
+- validation protocol status: `post_hoc_repair_validation`
+- truly fresh holdout exists: no
+- model groups attempted/trained/tuned: 180 / 72 / 72
+- rows before repair: 32,020
+- rows after duplicate-key repair: 19,600
+- duplicate rows removed: 12,420
+- overlapping rows removed: 3,495
+- clean/de-overlapped rows retained: 16,105
+- clean rows by horizon: h1 15,400; h5 705
+- allowed forecast slices: 0
+- abstained slices: 910
+- abstained rows: 16,105
+- primary abstention reason: minimum rows not met
+- retained forecast coverage: 0.000000
+- retained directional accuracy: unavailable because no slices passed the strict gates
+- retained balanced accuracy: unavailable because no slices passed the strict gates
+- retained MCC: unavailable because no slices passed the strict gates
+- retained-row baselines: random unavailable, majority unavailable, previous-direction unavailable
+- random baseline beaten on retained rows: no
+- majority baseline beaten on retained rows: no
+- previous-direction baseline beaten on retained rows: no
+- generated-evidence engine universe completed/skipped/failed: 9,960 / 67,890 / 0
+- final forecast-mode status: `forecast_mode_blocked_by_data_quality`
+- broad performance claim allowed: no
+
+No acceptable accuracy claim was achieved in this run. There are not enough robust local slices after de-overlap and strict row-count gating, so the honest product behavior is abstention with explicit review reasons.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.forecast_data_repair_audit --input .tmp_forecast_repair\forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.deoverlapped_forecast_dataset --input .tmp_forecast_repair\forecast_actual_rows.jsonl --write-output .tmp_forecast_repair\deoverlapped_rows.jsonl --format report
+python -m src.hackaithon_mvp.robust_forecast_slice_gate --input .tmp_forecast_repair\deoverlapped_rows.jsonl --min-rows 300 --format report
+python -m src.hackaithon_mvp.selective_forecast_mode --input .tmp_forecast_repair\retained_forecast_rows.jsonl --format report
+python -m src.hackaithon_mvp.fresh_validation_protocol --input .tmp_forecast_repair\deoverlapped_rows.jsonl --format report
+python -m src.hackaithon_mvp.forecast_repair_orchestrator --output-root .tmp_forecast_repair --max-workers 1 --max-models 300 --min-slice-rows 300 --format report
+python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_forecast_repair\evidence --output-root .tmp_forecast_repair\engine_sweep --format report
+```
+
 ## Optional Local Ollama LLM Experiment
 
 The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
@@ -308,10 +362,10 @@ python -m src.hackaithon_mvp.llm_demo_evidence_pack --write-store .tmp_llm_store
 python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 ```
 
-Expected local result:
+Latest local result:
 
 ```text
-750 passed
+766 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -628,7 +682,7 @@ This MVP is bounded by the following rules:
 * real accuracy requires local actual data input
 * no live data
 * no provider API calls
-* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, or `.tmp_accuracy_maximization` workflows
+* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, `.tmp_accuracy_maximization`, or `.tmp_forecast_repair` workflows
 * generated forecast rows, evidence, diagnostics, and model outputs remain untracked
 * no benchmark rerun
 * no action labels
