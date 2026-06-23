@@ -21,7 +21,7 @@ Current scope:
 - offline local-file gateway only
 - no live data
 - no provider API calls
-- bounded local model training/tuning only through explicit `.tmp_full_model_run` or `.tmp_performance_rescue` workflows
+- bounded local model training/tuning only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, or `.tmp_accuracy_maximization` workflows
 - generated forecasts/evidence stay untracked and are not committed
 - no benchmark rerun
 - no action-oriented output
@@ -106,6 +106,11 @@ Current scope:
 | Purged Walk-forward Validation | Implemented | Builds purged and embargoed temporal folds for overlapping-horizon diagnostics |
 | Model Champion Selector | Implemented | Selects diagnostic validation champions by global, horizon, ticker, and ticker-horizon slices with baseline and leakage rejection reasons |
 | Performance Rescue Orchestrator | Implemented | Runs bounded local rescue diagnostics, expanded features, stronger classical candidates, polarity audit, champion rows, evidence materialization, and generated-evidence sweep |
+| Accuracy Maximization Planner | Implemented | Inspects local OHLCV coverage, supervised rows, prior rescue metrics, class balance, local model families, and audit warnings before an explicit accuracy run |
+| Selective Prediction Gate | Implemented | Tunes diagnostic abstention thresholds on validation rows and reports accuracy together with retained-row coverage |
+| Diagnostic Ensemble Selector | Implemented | Builds validation-only majority, probability-average, weighted, and slice-champion ensemble candidates for fixed-policy review |
+| Final Holdout Evaluator | Implemented | Scores a fixed selected policy on latest untouched local holdout rows with baselines, Wilson interval, and coverage |
+| Accuracy Maximization Orchestrator | Implemented | Runs the bounded local feature/model/gate/ensemble/holdout workflow under `.tmp_accuracy_maximization` and reports non-improvements honestly |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -238,6 +243,44 @@ python -m src.hackaithon_mvp.release_accuracy_report --input .tmp_performance_re
 python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_performance_rescue\evidence --output-root .tmp_performance_rescue\engine_sweep --format report
 ```
 
+## Accuracy Maximization and Final Holdout
+
+The accuracy maximization sprint expanded leakage-safe feature blocks, widened bounded classical model grids, added validation-tuned confidence abstention, tested simple diagnostic ensembles, and scored the fixed selected policy on final untouched holdout rows.
+
+Latest local accuracy-maximization run (`--max-models 300`, all 180 eligible groups):
+
+- provider fetch used: no
+- feature blocks: basic, momentum, mean_reversion, volatility, volume, market_context, cross_sectional, regime
+- model groups attempted/trained/tuned: 180 / 180 / 180
+- generated forecast-vs-actual rows: 135,040
+- selected final holdout rows: 15,179
+- validation policy metrics after the fixed flip diagnostic: accuracy 0.546854, balanced accuracy 0.541942, MCC 0.088410
+- validation selective gate: threshold 0.70, balanced accuracy 0.562841 at 0.502600 coverage
+- final untouched holdout metrics: accuracy 0.484890, balanced accuracy 0.479247, MCC -0.044870, Wilson interval 0.476777 to 0.493011, coverage 0.540099
+- final holdout baselines: random 0.500000, majority 0.514766, previous-direction 0.952868
+- global final holdout beat random: no
+- global final holdout beat majority: no
+- global final holdout beat previous-direction: no
+- best final holdout horizon slice: h1 balanced accuracy 0.541308 over 2,219 rows
+- best final holdout ticker slice: BID balanced accuracy 0.701555 over 313 rows
+- best final holdout ticker-horizon slice: GAS h1 balanced accuracy 0.782609 over 52 rows
+- validation ensemble selector chose `per_ticker_champion` with balanced accuracy 0.627370 on validation rows; this is not promoted to a final global claim
+- generated engine universe completed specs: 24,900
+- generated engine universe skipped specs: 52,950
+- failed specs: 0
+- broad performance claim allowed: no
+
+The honest outcome is that validation selection did not transfer to global final holdout. The MVP should pitch this lane as diagnostic governance, evidence generation, leakage auditing, and transparent model review rather than as a broad forecasting edge.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.accuracy_maximization_planner --format report
+python -m src.hackaithon_mvp.accuracy_maximization_orchestrator --output-root .tmp_accuracy_maximization --max-workers 1 --max-models 300 --max-runtime-minutes 90 --format report
+python -m src.hackaithon_mvp.final_holdout_evaluator --input .tmp_accuracy_maximization\selected_policy_holdout_rows.jsonl --format report
+python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_accuracy_maximization\evidence --output-root .tmp_accuracy_maximization\engine_sweep --format report
+```
+
 ## Optional Local Ollama LLM Experiment
 
 The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
@@ -268,7 +311,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-737 passed
+750 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -585,7 +628,7 @@ This MVP is bounded by the following rules:
 * real accuracy requires local actual data input
 * no live data
 * no provider API calls
-* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run` or `.tmp_performance_rescue` workflows
+* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run`, `.tmp_performance_rescue`, or `.tmp_accuracy_maximization` workflows
 * generated forecast rows, evidence, diagnostics, and model outputs remain untracked
 * no benchmark rerun
 * no action labels

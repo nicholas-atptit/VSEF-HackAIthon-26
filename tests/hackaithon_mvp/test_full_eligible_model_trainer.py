@@ -1,6 +1,7 @@
 import json
 
 from src.hackaithon_mvp.full_eligible_model_trainer import (
+    _classification_candidates,
     discover_trainable_model_specs,
     render_full_eligible_model_training_report,
     run_full_eligible_model_training,
@@ -84,3 +85,22 @@ def test_run_full_training_writes_summary_and_tuning_report(tmp_path):
     assert (output_root / "training_run_summary.json").exists()
     assert (output_root / "tuning_report.json").exists()
     assert "Full Eligible Model Training" in report
+
+
+def test_expanded_logistic_grid_is_bounded_and_deterministic():
+    candidates = _classification_candidates("logistic_l2")
+
+    params = [item[0] for item in candidates]
+    assert len(candidates) == 8
+    assert {"C": 0.01, "penalty": "l2", "class_weight": None} in params
+    assert {"C": 10.0, "penalty": "l2", "class_weight": "balanced"} in params
+
+
+def test_accuracy_maximization_output_root_is_allowed(tmp_path):
+    output_root = tmp_path / ".tmp_accuracy_maximization"
+    spec = {"model_key": "majority_class", "model_family": "baseline", "target": "absolute_direction", "horizon": 1}
+
+    result = train_one_model_spec(spec, _dataset_rows(), output_root=str(output_root))
+
+    assert result["training_status"] == "completed"
+    assert (output_root / "forecast_actual_rows.jsonl").exists()

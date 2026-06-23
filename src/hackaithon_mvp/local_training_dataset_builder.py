@@ -15,6 +15,16 @@ from typing import Any
 
 BAR_SUFFIXES = {".csv", ".jsonl", ".json"}
 HORIZONS = (1, 5, 10, 20, 40)
+FEATURE_BLOCKS = (
+    "basic",
+    "momentum",
+    "mean_reversion",
+    "volatility",
+    "volume",
+    "market_context",
+    "cross_sectional",
+    "regime",
+)
 REQUIRED_BAR_FIELDS = {"open", "high", "low", "close", "volume"}
 TIME_ALIASES = ("datetime", "timestamp", "date")
 TICKER_ALIASES = ("ticker", "symbol", "index_code")
@@ -276,6 +286,16 @@ def _std(values: list[float]) -> float | None:
     return math.sqrt(sum((value - mean) ** 2 for value in values) / (len(values) - 1))
 
 
+def _skew_proxy(values: list[float]) -> float:
+    if len(values) < 3:
+        return 0.0
+    mean = sum(values) / len(values)
+    std = _std(values) or 0.0
+    if std == 0:
+        return 0.0
+    return sum(((value - mean) / std) ** 3 for value in values) / len(values)
+
+
 def _direction(value: float) -> str:
     if value > 0:
         return "up"
@@ -289,13 +309,16 @@ def _feature_row(rows: list[dict], index: int, returns: list[float | None]) -> d
     close_value = current["close"]
     open_value = current["open"]
     prev_close = rows[index - 1]["close"] if index > 0 else close_value
+    prev_open = rows[index - 1]["open"] if index > 0 else open_value
     features: dict[str, float] = {}
-    for lag in (1, 2, 3, 5, 10, 20):
+    for lag in (1, 2, 3, 5, 10, 20, 40):
         source_index = index - lag + 1
         features[f"feature_lag_return_{lag}"] = (
             returns[source_index] if source_index >= 0 and returns[source_index] is not None else 0.0
         )
-    for window in (5, 10, 20, 40):
+    prior_return = returns[index - 1] if index > 0 and returns[index - 1] is not None else None
+    features["feature_previous_direction_prior"] = 1.0 if prior_return is not None and prior_return > 0 else -1.0 if prior_return is not None and prior_return < 0 else 0.0
+    for window in (3, 5, 10, 20, 40):
         return_window = [value for value in returns[max(1, index - window + 1) : index + 1] if value is not None]
         volume_window = [row["volume"] for row in rows[max(0, index - window + 1) : index + 1]]
         mean_return = _mean(return_window) or 0.0
@@ -304,16 +327,19 @@ def _feature_row(rows: list[dict], index: int, returns: list[float | None]) -> d
         volume_std = _std(volume_window) or 0.0
         features[f"feature_rolling_mean_return_{window}"] = mean_return
         features[f"feature_rolling_volatility_{window}"] = volatility
+        features[f"feature_rolling_skew_proxy_{window}"] = _skew_proxy(return_window)
         features[f"feature_rolling_volume_mean_{window}"] = volume_mean
+        zscore = 0.0 if volume_std == 0 else (current["volume"] - volume_mean) / volume_std
+        features[f"feature_rolling_volume_zscore_{window}"] = zscore
         if window == 20:
-            features["feature_rolling_volume_zscore"] = (
-                0.0 if volume_std == 0 else (current["volume"] - volume_mean) / volume_std
-            )
+            features["feature_rolling_volume_zscore"] = zscore
     features["feature_high_low_range"] = 0.0 if close_value == 0 else (current["high"] - current["low"]) / close_value
     features["feature_high_low_range_pct"] = features["feature_high_low_range"]
     features["feature_intrabar_range"] = features["feature_high_low_range"]
     features["feature_close_open_return"] = 0.0 if open_value == 0 else (close_value - open_value) / open_value
     features["feature_close_to_prev_close"] = 0.0 if prev_close == 0 else (close_value - prev_close) / prev_close
+    features["feature_gap_return"] = 0.0 if prev_close == 0 else (open_value - prev_close) / prev_close
+    features["feature_open_to_prev_open"] = 0.0 if prev_open == 0 else (open_value - prev_open) / prev_open
     for window in (5, 10, 20):
         if index >= window and rows[index - window]["close"] != 0:
             momentum = (close_value - rows[index - window]["close"]) / rows[index - window]["close"]
@@ -337,13 +363,54 @@ def _feature_row(rows: list[dict], index: int, returns: list[float | None]) -> d
     return features
 
 
+def _normalize_feature_blocks(feature_blocks: tuple[str, ...] | list[str] | None) -> tuple[str, ...]:
+    if feature_blocks is None:
+        return FEATURE_BLOCKS
+    selected = tuple(str(item).strip() for item in feature_blocks if str(item).strip())
+    unknown = sorted(set(selected) - set(FEATURE_BLOCKS))
+    if unknown:
+        raise ValueError(f"unknown feature_blocks: {unknown}")
+    return selected or FEATURE_BLOCKS
+
+
+def _feature_block_for_column(column: str) -> str:
+    if column.startswith(("feature_ticker_relative", "feature_cross_sectional")):
+        return "cross_sectional"
+    if column.startswith("feature_market_"):
+        return "market_context"
+    if "volume" in column:
+        return "regime" if "regime" in column else "volume"
+    if "volatility" in column or "skew" in column or "intrabar" in column:
+        return "regime" if "regime" in column else "volatility"
+    if "reversal" in column or "distance_to_rolling_mean" in column or "drawdown" in column:
+        return "mean_reversion"
+    if "momentum" in column or "lag_return" in column or "rolling_mean_return" in column or "previous_direction" in column:
+        return "momentum"
+    if "regime" in column:
+        return "regime"
+    return "basic"
+
+
+def _filter_feature_blocks(row: dict[str, Any], feature_blocks: tuple[str, ...]) -> dict[str, Any]:
+    allowed = set(feature_blocks)
+    if allowed == set(FEATURE_BLOCKS):
+        return row
+    output: dict[str, Any] = {}
+    for key, value in row.items():
+        if not key.startswith("feature_") or _feature_block_for_column(key) in allowed:
+            output[key] = value
+    return output
+
+
 def build_supervised_direction_dataset(
     bars: list[dict],
     *,
     horizons: tuple[int, ...] = HORIZONS,
+    feature_blocks: tuple[str, ...] | list[str] | None = FEATURE_BLOCKS,
 ) -> dict:
     """Build ticker-aware supervised rows with future targets and past/current features only."""
 
+    selected_feature_blocks = _normalize_feature_blocks(feature_blocks)
     normalized = normalize_ohlcv_rows(bars)
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in normalized:
@@ -409,20 +476,26 @@ def build_supervised_direction_dataset(
         by_timestamp[str(row["timestamp"])].append(row)
     for timestamp_rows in by_timestamp.values():
         lag_values = [float(row.get("feature_lag_return_1") or 0.0) for row in timestamp_rows]
+        volume_values = [float(row.get("feature_rolling_volume_mean_20") or 0.0) for row in timestamp_rows]
         mean_lag = _mean(lag_values) or 0.0
         std_lag = _std(lag_values) or 0.0
         market_vol = _mean([float(row.get("feature_rolling_volatility_20") or 0.0) for row in timestamp_rows]) or 0.0
         sorted_values = sorted(lag_values)
+        sorted_volume_values = sorted(volume_values)
         denominator = max(len(sorted_values) - 1, 1)
         for row in timestamp_rows:
             lag_value = float(row.get("feature_lag_return_1") or 0.0)
+            volume_value = float(row.get("feature_rolling_volume_mean_20") or 0.0)
             rank_index = sorted_values.index(lag_value) if sorted_values else 0
+            volume_rank_index = sorted_volume_values.index(volume_value) if sorted_volume_values else 0
             row["feature_ticker_relative_return_zscore"] = 0.0 if std_lag == 0 else (lag_value - mean_lag) / std_lag
             row["feature_cross_sectional_return_rank"] = rank_index / denominator
+            row["feature_cross_sectional_volume_rank"] = volume_rank_index / max(len(sorted_volume_values) - 1, 1)
             row["feature_market_equal_weight_return"] = mean_lag if len(timestamp_rows) >= 2 else 0.0
             row["feature_market_wide_volatility"] = market_vol if len(timestamp_rows) >= 2 else 0.0
             row["feature_cross_sectional_count"] = float(len(timestamp_rows))
 
+    dataset_rows = [_filter_feature_blocks(row, selected_feature_blocks) for row in dataset_rows]
     feature_columns = sorted(key for key in dataset_rows[0] if key.startswith("feature_")) if dataset_rows else []
     return {
         "dataset_status": "ready" if dataset_rows else "not_ready_no_supervised_rows",
@@ -430,6 +503,7 @@ def build_supervised_direction_dataset(
         "dataset_row_count": len(dataset_rows),
         "ticker_count": len({row["ticker"] for row in dataset_rows}),
         "horizons": list(horizons),
+        "feature_blocks": list(selected_feature_blocks),
         "feature_columns": feature_columns,
         "rows_by_ticker_horizon": dict(sorted(rows_by_ticker_horizon.items())),
         "skipped_rows_without_future_bars": skipped_without_future,
@@ -441,9 +515,9 @@ def build_supervised_direction_dataset(
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    allowed = (".tmp_full_model_run", ".tmp_performance_rescue")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization")
     if not any(part.lower().startswith(allowed) for part in path.parts):
-        raise ValueError("write-output must be under .tmp_full_model_run or .tmp_performance_rescue")
+        raise ValueError("write-output must be under an explicit local temp model-run root")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -476,6 +550,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build local supervised rows from discovered OHLCV bars.")
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--max-tickers", type=int, default=None)
+    parser.add_argument("--feature-blocks", default=",".join(FEATURE_BLOCKS), help="Comma-separated feature blocks.")
     parser.add_argument("--write-output", default=None)
     parser.add_argument("--format", choices=("json", "report"), default="json")
     return parser
@@ -484,7 +559,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     bars = list(load_discovered_ohlcv_rows(repo_root=args.repo_root, max_tickers=args.max_tickers))
-    result = build_supervised_direction_dataset(bars)
+    feature_blocks = tuple(item.strip() for item in str(args.feature_blocks).split(",") if item.strip())
+    result = build_supervised_direction_dataset(bars, feature_blocks=feature_blocks)
     if args.write_output:
         _write_jsonl(Path(args.write_output), result["rows"])
         result = {**result, "written_output": args.write_output}

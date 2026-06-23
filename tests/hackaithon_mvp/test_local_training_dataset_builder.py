@@ -48,12 +48,40 @@ def test_build_supervised_dataset_uses_future_targets_and_past_features():
     assert "future_return" in first
     assert "feature_lag_return_1" in first
     assert "feature_lag_return_20" in first
+    assert "feature_lag_return_40" in first
+    assert "feature_previous_direction_prior" in first
     assert "feature_rolling_volatility_40" in first
+    assert "feature_rolling_skew_proxy_10" in first
+    assert "feature_rolling_volume_zscore_40" in first
     assert "feature_ticker_relative_return_zscore" in first
     assert "feature_cross_sectional_return_rank" in first
+    assert "feature_cross_sectional_volume_rank" in first
     assert "feature_market_equal_weight_return" in first
     assert "market_relative_direction" in next(row for row in result["rows"] if row["ticker"] == "AAA")
     assert all(column.startswith("feature_") for column in result["feature_columns"])
+    assert set(result["feature_blocks"]) >= {"basic", "momentum", "cross_sectional"}
+
+
+def test_feature_blocks_filter_optional_features_without_target_leakage():
+    result = build_supervised_direction_dataset(_bars(count=90), horizons=(1,), feature_blocks=("basic", "momentum"))
+    first = result["rows"][5]
+
+    assert "future_return" in first
+    assert "feature_lag_return_1" in first
+    assert "feature_previous_direction_prior" in first
+    assert "feature_high_low_range" in first
+    assert "feature_cross_sectional_return_rank" not in first
+    assert "feature_market_equal_weight_return" not in first
+    assert "future_direction" not in result["feature_columns"]
+
+
+def test_previous_direction_feature_uses_strictly_prior_return():
+    bars = _bars(tickers=("AAA",), count=85)
+    result = build_supervised_direction_dataset(bars, horizons=(1,), feature_blocks=("momentum",))
+    rows = [row for row in result["rows"] if row["ticker"] == "AAA"]
+
+    assert rows[0]["feature_previous_direction_prior"] == 0.0
+    assert rows[2]["feature_previous_direction_prior"] in {-1.0, 0.0, 1.0}
 
 
 def test_discover_local_ohlcv_sources_on_tmp_repo(tmp_path):

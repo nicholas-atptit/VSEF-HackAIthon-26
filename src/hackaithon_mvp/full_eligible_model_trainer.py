@@ -75,9 +75,9 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def _output_root(path: str | Path) -> Path:
     root = Path(path)
-    allowed = (".tmp_full_model_run", ".tmp_performance_rescue")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue", ".tmp_accuracy_maximization")
     if not any(part.lower().startswith(allowed) for part in root.parts):
-        raise ValueError("output_root must be .tmp_full_model_run, .tmp_performance_rescue, or a child path")
+        raise ValueError("output_root must be an explicit local temp model-run root or a child path")
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -285,25 +285,25 @@ def _classification_candidates(model_key: str):
     if model_key == "logistic_l2":
         return [
             (
-                {"C": c, "class_weight": class_weight},
+                {"C": c, "penalty": "l2", "class_weight": class_weight},
                 make_pipeline(
                     StandardScaler(),
                     LogisticRegression(C=c, penalty="l2", class_weight=class_weight, max_iter=250, solver="liblinear"),
                 ),
             )
-            for c in (0.25, 1.0)
+            for c in (0.01, 0.1, 1.0, 10.0)
             for class_weight in (None, "balanced")
         ]
     if model_key == "logistic_l1":
         return [
             (
-                {"C": c, "class_weight": class_weight},
+                {"C": c, "penalty": "l1", "class_weight": class_weight},
                 make_pipeline(
                     StandardScaler(),
                     LogisticRegression(C=c, penalty="l1", class_weight=class_weight, max_iter=250, solver="liblinear"),
                 ),
             )
-            for c in (0.25, 1.0)
+            for c in (0.01, 0.1, 1.0, 10.0)
             for class_weight in (None, "balanced")
         ]
     if model_key == "linear_svm":
@@ -312,30 +312,72 @@ def _classification_candidates(model_key: str):
                 {"C": c, "class_weight": class_weight},
                 make_pipeline(StandardScaler(), LinearSVC(C=c, class_weight=class_weight, max_iter=2000, random_state=42)),
             )
-            for c in (0.25, 1.0)
+            for c in (0.01, 0.1, 1.0)
             for class_weight in (None, "balanced")
         ]
     if model_key == "ridge_classifier":
-        return [({"alpha": a}, make_pipeline(StandardScaler(), RidgeClassifier(alpha=a))) for a in (0.5, 1.0)]
+        return [({"alpha": a}, make_pipeline(StandardScaler(), RidgeClassifier(alpha=a))) for a in (0.1, 1.0, 10.0)]
     if model_key == "random_forest":
         return [
-            ({"n_estimators": 30, "max_depth": depth}, RandomForestClassifier(n_estimators=30, max_depth=depth, random_state=42, n_jobs=1))
-            for depth in (4, None)
+            (
+                {"n_estimators": n_estimators, "max_depth": depth, "min_samples_leaf": leaf, "class_weight": class_weight},
+                RandomForestClassifier(
+                    n_estimators=n_estimators,
+                    max_depth=depth,
+                    min_samples_leaf=leaf,
+                    class_weight=class_weight,
+                    random_state=42,
+                    n_jobs=1,
+                ),
+            )
+            for n_estimators in (100, 200)
+            for depth in (3, 5, 8, None)
+            for leaf in (5, 20, 50)
+            for class_weight in (None, "balanced")
         ]
     if model_key == "extra_trees":
         return [
-            ({"n_estimators": 40, "max_depth": depth}, ExtraTreesClassifier(n_estimators=40, max_depth=depth, random_state=42, n_jobs=1))
-            for depth in (4, None)
+            (
+                {"n_estimators": n_estimators, "max_depth": depth, "min_samples_leaf": leaf, "class_weight": class_weight},
+                ExtraTreesClassifier(
+                    n_estimators=n_estimators,
+                    max_depth=depth,
+                    min_samples_leaf=leaf,
+                    class_weight=class_weight,
+                    random_state=42,
+                    n_jobs=1,
+                ),
+            )
+            for n_estimators in (100, 200)
+            for depth in (3, 5, 8, None)
+            for leaf in (5, 20, 50)
+            for class_weight in (None, "balanced")
         ]
     if model_key == "sklearn_gradient_boosting":
         return [
-            ({"n_estimators": 40, "learning_rate": lr}, GradientBoostingClassifier(n_estimators=40, learning_rate=lr, random_state=42))
-            for lr in (0.05, 0.1)
+            (
+                {"n_estimators": n_estimators, "learning_rate": lr, "max_depth": depth},
+                GradientBoostingClassifier(n_estimators=n_estimators, learning_rate=lr, max_depth=depth, random_state=42),
+            )
+            for lr in (0.01, 0.03, 0.05)
+            for n_estimators in (100, 200)
+            for depth in (2, 3)
         ]
     if model_key == "hist_gradient_boosting":
         return [
-            ({"max_iter": 50, "learning_rate": lr}, HistGradientBoostingClassifier(max_iter=50, learning_rate=lr, random_state=42))
-            for lr in (0.05, 0.1)
+            (
+                {"learning_rate": lr, "max_leaf_nodes": leaves, "l2_regularization": l2},
+                HistGradientBoostingClassifier(
+                    max_iter=100,
+                    learning_rate=lr,
+                    max_leaf_nodes=leaves,
+                    l2_regularization=l2,
+                    random_state=42,
+                ),
+            )
+            for lr in (0.01, 0.03, 0.05)
+            for leaves in (15, 31)
+            for l2 in (0.0, 0.1, 1.0)
         ]
     return []
 
@@ -349,11 +391,22 @@ def _regression_candidates(model_key: str):
     if model_key == "linear_regression":
         return [({}, make_pipeline(StandardScaler(), LinearRegression()))]
     if model_key == "ridge_regression":
-        return [({"alpha": a}, make_pipeline(StandardScaler(), Ridge(alpha=a))) for a in (0.5, 1.0)]
+        return [({"alpha": a}, make_pipeline(StandardScaler(), Ridge(alpha=a))) for a in (0.1, 1.0, 10.0)]
     if model_key == "random_forest_regressor":
         return [
-            ({"n_estimators": 30, "max_depth": depth}, RandomForestRegressor(n_estimators=30, max_depth=depth, random_state=42, n_jobs=1))
-            for depth in (4, None)
+            (
+                {"n_estimators": n_estimators, "max_depth": depth, "min_samples_leaf": leaf},
+                RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=depth,
+                    min_samples_leaf=leaf,
+                    random_state=42,
+                    n_jobs=1,
+                ),
+            )
+            for n_estimators in (100, 200)
+            for depth in (3, 5, 8, None)
+            for leaf in (5, 20, 50)
         ]
     return []
 
@@ -375,9 +428,16 @@ def _previous_direction_predict(rows: list[dict]) -> list[int]:
     return [1 if float(row.get("feature_lag_return_1", 0.0) or 0.0) >= 0 else 0 for row in rows]
 
 
-def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: list[dict]) -> dict:
+def tune_one_model_spec(
+    spec: dict,
+    train_rows: list[dict],
+    validation_rows: list[dict],
+    *,
+    timeout_seconds: int | None = None,
+) -> dict:
     """Fit bounded candidates on train rows and report validation metrics."""
 
+    started = time.monotonic()
     model_key = str(spec["model_key"])
     target = str(spec["target"])
     feature_columns = _feature_columns(train_rows + validation_rows)
@@ -411,7 +471,11 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
     x_inner, y_inner = _xy(inner_train, feature_columns)
     x_cal, y_cal = _xy(inner_calibration, feature_columns)
     candidate_results: list[dict[str, Any]] = []
+    search_stopped_early = False
     for params, model in candidates:
+        if timeout_seconds is not None and candidate_results and time.monotonic() - started >= timeout_seconds:
+            search_stopped_early = True
+            break
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
@@ -436,6 +500,7 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
                     "inner_metric": train_metric,
                     "objective": objective if objective is not None else -999.0,
                     "secondary_objective": secondary if secondary is not None else -999.0,
+                    "tertiary_objective": train_metric.get("accuracy") if is_classifier else train_metric.get("directional_accuracy"),
                 }
             )
         except Exception as exc:  # noqa: BLE001 - per-model isolation.
@@ -443,7 +508,14 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
     selectable = [item for item in candidate_results if "model" in item]
     if not selectable:
         return {"tuning_status": "skipped", "skip_reason": "all_candidate_fits_failed"}
-    selectable.sort(key=lambda item: (float(item["objective"]), float(item.get("secondary_objective", -999.0))), reverse=True)
+    selectable.sort(
+        key=lambda item: (
+            float(item["objective"]),
+            float(item.get("secondary_objective", -999.0)),
+            float(item.get("tertiary_objective") or -999.0),
+        ),
+        reverse=True,
+    )
     best = selectable[0]
 
     # Refit the selected candidate on the full train split before final validation.
@@ -474,6 +546,8 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
         "post_tune_validation_metrics": post_metric,
         "supports_probability": supports_probability,
         "candidate_count": len(candidates),
+        "candidate_fit_attempt_count": len(candidate_results),
+        "candidate_search_stopped_early": search_stopped_early,
         "model_object": selected_model,
         "feature_columns": feature_columns,
     }
@@ -541,7 +615,13 @@ def _forecast_actual_rows_for_validation(
     return rows
 
 
-def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: str) -> dict:
+def train_one_model_spec(
+    spec: dict,
+    dataset_rows: list[dict],
+    *,
+    output_root: str,
+    timeout_seconds_per_model: int | None = None,
+) -> dict:
     """Train one eligible model group and append compact validation rows."""
 
     started = time.monotonic()
@@ -565,7 +645,12 @@ def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: s
             "skip_reason": "insufficient_validation_rows",
             "available_rows": len(rows),
         }
-    tuning = tune_one_model_spec(spec, train_rows, validation_rows)
+    tuning = tune_one_model_spec(
+        spec,
+        train_rows,
+        validation_rows,
+        timeout_seconds=timeout_seconds_per_model,
+    )
     if tuning.get("tuning_status") != "completed":
         return {
             "model_key": spec["model_key"],
@@ -598,6 +683,9 @@ def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: s
         "train_rows": len(train_rows),
         "selected_hyperparameters": tuning.get("selected_hyperparameters"),
         "selected_threshold": tuning.get("selected_threshold"),
+        "candidate_count": tuning.get("candidate_count"),
+        "candidate_fit_attempt_count": tuning.get("candidate_fit_attempt_count"),
+        "candidate_search_stopped_early": tuning.get("candidate_search_stopped_early"),
         "split_diagnostics": split_diagnostics,
         "pre_tune_validation_metrics": tuning.get("pre_tune_validation_metrics"),
         "post_tune_validation_metrics": tuning.get("post_tune_validation_metrics"),
@@ -671,7 +759,12 @@ def run_full_eligible_model_training(
             skipped.append({**spec, "training_status": "skipped", "skip_reason": "already_completed_checkpoint"})
             continue
         started = time.monotonic()
-        result = train_one_model_spec(spec, dataset_rows, output_root=str(root))
+        result = train_one_model_spec(
+            spec,
+            dataset_rows,
+            output_root=str(root),
+            timeout_seconds_per_model=timeout_seconds_per_model,
+        )
         elapsed = time.monotonic() - started
         if elapsed > timeout_seconds_per_model:
             result["timeout_exceeded"] = True
