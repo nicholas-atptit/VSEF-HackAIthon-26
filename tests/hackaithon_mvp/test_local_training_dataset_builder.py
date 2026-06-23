@@ -47,6 +47,11 @@ def test_build_supervised_dataset_uses_future_targets_and_past_features():
     first = result["rows"][0]
     assert "future_return" in first
     assert "feature_lag_return_1" in first
+    assert "feature_lag_return_20" in first
+    assert "feature_rolling_volatility_40" in first
+    assert "feature_ticker_relative_return_zscore" in first
+    assert "feature_cross_sectional_return_rank" in first
+    assert "feature_market_equal_weight_return" in first
     assert "market_relative_direction" in next(row for row in result["rows"] if row["ticker"] == "AAA")
     assert all(column.startswith("feature_") for column in result["feature_columns"])
 

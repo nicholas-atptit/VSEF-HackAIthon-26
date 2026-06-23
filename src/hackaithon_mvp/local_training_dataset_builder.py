@@ -289,29 +289,52 @@ def _feature_row(rows: list[dict], index: int, returns: list[float | None]) -> d
     close_value = current["close"]
     open_value = current["open"]
     prev_close = rows[index - 1]["close"] if index > 0 else close_value
-    lag_1 = returns[index] or 0.0
-    lag_2 = returns[index - 1] if index > 1 and returns[index - 1] is not None else 0.0
-    window_5 = [value for value in returns[max(1, index - 4) : index + 1] if value is not None]
-    window_10 = [value for value in returns[max(1, index - 9) : index + 1] if value is not None]
-    volume_5 = [row["volume"] for row in rows[max(0, index - 4) : index + 1]]
-    return {
-        "feature_lag_return_1": lag_1,
-        "feature_lag_return_2": lag_2,
-        "feature_rolling_mean_return_5": _mean(window_5) or 0.0,
-        "feature_rolling_volatility_5": _std(window_5) or 0.0,
-        "feature_rolling_mean_return_10": _mean(window_10) or 0.0,
-        "feature_rolling_volatility_10": _std(window_10) or 0.0,
-        "feature_rolling_volume_mean_5": _mean(volume_5) or 0.0,
-        "feature_high_low_range": 0.0 if close_value == 0 else (current["high"] - current["low"]) / close_value,
-        "feature_close_open_return": 0.0 if open_value == 0 else (close_value - open_value) / open_value,
-        "feature_momentum_5": 0.0
-        if index < 5 or rows[index - 5]["close"] == 0
-        else (close_value - rows[index - 5]["close"]) / rows[index - 5]["close"],
-        "feature_momentum_10": 0.0
-        if index < 10 or rows[index - 10]["close"] == 0
-        else (close_value - rows[index - 10]["close"]) / rows[index - 10]["close"],
-        "feature_close_to_prev_close": 0.0 if prev_close == 0 else (close_value - prev_close) / prev_close,
-    }
+    features: dict[str, float] = {}
+    for lag in (1, 2, 3, 5, 10, 20):
+        source_index = index - lag + 1
+        features[f"feature_lag_return_{lag}"] = (
+            returns[source_index] if source_index >= 0 and returns[source_index] is not None else 0.0
+        )
+    for window in (5, 10, 20, 40):
+        return_window = [value for value in returns[max(1, index - window + 1) : index + 1] if value is not None]
+        volume_window = [row["volume"] for row in rows[max(0, index - window + 1) : index + 1]]
+        mean_return = _mean(return_window) or 0.0
+        volatility = _std(return_window) or 0.0
+        volume_mean = _mean(volume_window) or 0.0
+        volume_std = _std(volume_window) or 0.0
+        features[f"feature_rolling_mean_return_{window}"] = mean_return
+        features[f"feature_rolling_volatility_{window}"] = volatility
+        features[f"feature_rolling_volume_mean_{window}"] = volume_mean
+        if window == 20:
+            features["feature_rolling_volume_zscore"] = (
+                0.0 if volume_std == 0 else (current["volume"] - volume_mean) / volume_std
+            )
+    features["feature_high_low_range"] = 0.0 if close_value == 0 else (current["high"] - current["low"]) / close_value
+    features["feature_high_low_range_pct"] = features["feature_high_low_range"]
+    features["feature_intrabar_range"] = features["feature_high_low_range"]
+    features["feature_close_open_return"] = 0.0 if open_value == 0 else (close_value - open_value) / open_value
+    features["feature_close_to_prev_close"] = 0.0 if prev_close == 0 else (close_value - prev_close) / prev_close
+    for window in (5, 10, 20):
+        if index >= window and rows[index - window]["close"] != 0:
+            momentum = (close_value - rows[index - window]["close"]) / rows[index - window]["close"]
+        else:
+            momentum = 0.0
+        features[f"feature_momentum_{window}"] = momentum
+        features[f"feature_reversal_{window}"] = -momentum
+        rolling_closes = [row["close"] for row in rows[max(0, index - window + 1) : index + 1]]
+        rolling_max = max(rolling_closes) if rolling_closes else close_value
+        rolling_mean = _mean(rolling_closes) or close_value
+        features[f"feature_drawdown_from_rolling_max_{window}"] = 0.0 if rolling_max == 0 else (close_value - rolling_max) / rolling_max
+        features[f"feature_distance_to_rolling_mean_{window}"] = 0.0 if rolling_mean == 0 else (close_value - rolling_mean) / rolling_mean
+    vol_20 = features.get("feature_rolling_volatility_20", 0.0)
+    vol_40 = features.get("feature_rolling_volatility_40", 0.0)
+    vol_ratio = 0.0 if vol_40 == 0 else vol_20 / vol_40
+    features["feature_volatility_regime_bucket"] = 2.0 if vol_ratio > 1.25 else 1.0 if vol_ratio > 0.75 else 0.0
+    volume_z = features.get("feature_rolling_volume_zscore", 0.0)
+    features["feature_volume_regime_bucket"] = 2.0 if volume_z > 1.0 else 0.0 if volume_z < -1.0 else 1.0
+    features["feature_missing_rolling_20_flag"] = 1.0 if index < 20 else 0.0
+    features["feature_missing_rolling_40_flag"] = 1.0 if index < 40 else 0.0
+    return features
 
 
 def build_supervised_direction_dataset(
@@ -381,6 +404,25 @@ def build_supervised_direction_dataset(
             float(row["future_return"]) / volatility if volatility > 0 else float(row["future_return"])
         )
 
+    by_timestamp: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in dataset_rows:
+        by_timestamp[str(row["timestamp"])].append(row)
+    for timestamp_rows in by_timestamp.values():
+        lag_values = [float(row.get("feature_lag_return_1") or 0.0) for row in timestamp_rows]
+        mean_lag = _mean(lag_values) or 0.0
+        std_lag = _std(lag_values) or 0.0
+        market_vol = _mean([float(row.get("feature_rolling_volatility_20") or 0.0) for row in timestamp_rows]) or 0.0
+        sorted_values = sorted(lag_values)
+        denominator = max(len(sorted_values) - 1, 1)
+        for row in timestamp_rows:
+            lag_value = float(row.get("feature_lag_return_1") or 0.0)
+            rank_index = sorted_values.index(lag_value) if sorted_values else 0
+            row["feature_ticker_relative_return_zscore"] = 0.0 if std_lag == 0 else (lag_value - mean_lag) / std_lag
+            row["feature_cross_sectional_return_rank"] = rank_index / denominator
+            row["feature_market_equal_weight_return"] = mean_lag if len(timestamp_rows) >= 2 else 0.0
+            row["feature_market_wide_volatility"] = market_vol if len(timestamp_rows) >= 2 else 0.0
+            row["feature_cross_sectional_count"] = float(len(timestamp_rows))
+
     feature_columns = sorted(key for key in dataset_rows[0] if key.startswith("feature_")) if dataset_rows else []
     return {
         "dataset_status": "ready" if dataset_rows else "not_ready_no_supervised_rows",
@@ -399,8 +441,9 @@ def build_supervised_direction_dataset(
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    if not any(part.lower().startswith(".tmp_full_model_run") for part in path.parts):
-        raise ValueError("write-output must be under .tmp_full_model_run")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue")
+    if not any(part.lower().startswith(allowed) for part in path.parts):
+        raise ValueError("write-output must be under .tmp_full_model_run or .tmp_performance_rescue")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:

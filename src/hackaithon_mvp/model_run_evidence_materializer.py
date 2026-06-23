@@ -59,8 +59,9 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def _validate_root(path: str | Path, label: str) -> Path:
     root = Path(path)
-    if not any(part.lower().startswith(".tmp_full_model_run") for part in root.parts):
-        raise ValueError(f"{label} must be under .tmp_full_model_run")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue")
+    if not any(part.lower().startswith(allowed) for part in root.parts):
+        raise ValueError(f"{label} must be under .tmp_full_model_run or .tmp_performance_rescue")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

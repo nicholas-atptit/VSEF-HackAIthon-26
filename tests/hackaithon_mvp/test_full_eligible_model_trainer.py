@@ -49,6 +49,8 @@ def test_discover_trainable_model_specs_lists_supported_groups():
 
     assert result["trainable_model_spec_count"] > 0
     assert "logistic_l2" in result["supported_model_keys"]
+    assert "extra_trees" in result["supported_model_keys"]
+    assert "linear_svm" in result["supported_model_keys"]
 
 
 def test_train_one_model_spec_completes_with_majority_baseline(tmp_path):
@@ -59,6 +61,7 @@ def test_train_one_model_spec_completes_with_majority_baseline(tmp_path):
 
     assert result["training_status"] == "completed"
     assert result["forecast_rows_written"] > 0
+    assert result["split_diagnostics"]["split_method"] in {"purged_temporal", "temporal_fallback_after_purge"}
     assert (output_root / "forecast_actual_rows.jsonl").exists()
 
 

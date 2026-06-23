@@ -21,7 +21,7 @@ Current scope:
 - offline local-file gateway only
 - no live data
 - no provider API calls
-- bounded local model training/tuning only through explicit `.tmp_full_model_run` workflows
+- bounded local model training/tuning only through explicit `.tmp_full_model_run` or `.tmp_performance_rescue` workflows
 - generated forecasts/evidence stay untracked and are not committed
 - no benchmark rerun
 - no action-oriented output
@@ -101,6 +101,11 @@ Current scope:
 | Model Run Evidence Materializer | Implemented | Converts local training outputs into static evidence, dependency outputs, forecast-vs-actual rows, diagnostics, and accuracy summaries |
 | Full Engine Universe Runner | Implemented | Reruns the generated engine universe with materialized evidence and reports completed, skipped, failed, and remaining skip reasons |
 | Full Release Model Orchestrator | Implemented | Runs planning, dataset build, eligible training/tuning, evidence materialization, accuracy evaluation, and generated-evidence engine sweep under explicit output root |
+| Signal Sanity Audit | Implemented | Audits label polarity, probability polarity, horizon alignment, and flipped-prediction rescue using local forecast-vs-actual rows |
+| Baseline Sanity Audit | Implemented | Recomputes previous-direction persistence within ticker/horizon/model groups and flags leakage, duplicate keys, and high-persistence risk |
+| Purged Walk-forward Validation | Implemented | Builds purged and embargoed temporal folds for overlapping-horizon diagnostics |
+| Model Champion Selector | Implemented | Selects diagnostic validation champions by global, horizon, ticker, and ticker-horizon slices with baseline and leakage rejection reasons |
+| Performance Rescue Orchestrator | Implemented | Runs bounded local rescue diagnostics, expanded features, stronger classical candidates, polarity audit, champion rows, evidence materialization, and generated-evidence sweep |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -196,6 +201,43 @@ python -m src.hackaithon_mvp.release_accuracy_report --input .tmp_full_model_run
 python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_full_model_run\evidence --output-root .tmp_full_model_run\engine_sweep --format report
 ```
 
+## Performance Rescue Diagnostics
+
+The performance rescue sprint added local sanity audits and a bounded rescue pipeline because the first full local run was below random and majority baselines.
+
+The rescue pipeline expands leakage-safe features, adds purged/embargoed validation diagnostics, tries stronger locally available classical candidates, audits label/probability polarity, audits previous-direction persistence, and selects diagnostic champions with explicit rejection reasons.
+
+Latest bounded rescue result (`--max-models 120`):
+
+- provider fetch used: no
+- trained/tuned model groups: 120 / 120
+- evaluated champion rows: 90,032
+- original balanced accuracy before flip diagnostic: 0.484729
+- flipped balanced accuracy after polarity diagnostic: 0.515270
+- final directional accuracy: 0.517594
+- final balanced accuracy: 0.515270
+- baselines: majority 0.507109, random 0.500000, previous-direction 0.955518
+- original MCC: -0.032318; flipped MCC: 0.032318
+- signal audit: possible label polarity mismatch true; probability polarity mismatch false
+- baseline audit: leakage warning true, duplicate key count 30,016, overlap warning true, high-persistence warning false
+- purged walk-forward: completed, 3 ready folds
+- champion selection: 522 candidates beat random, 158 beat majority, 13 beat previous-direction in local slices
+- generated engine universe completed specs: 21,600
+- skipped specs: 56,250
+- failed specs: 0
+
+This is an honest diagnostic improvement over the first local model run and over random/majority on the bounded rescue rows. It is not a broad superiority claim because the previous-direction baseline remains much higher and has its own audit warnings that require human review.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.forecast_signal_sanity_audit --input .tmp_performance_rescue\forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.release_baseline_sanity_audit --input .tmp_performance_rescue\forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.performance_rescue_orchestrator --output-root .tmp_performance_rescue --max-workers 1 --max-models 120 --format report
+python -m src.hackaithon_mvp.release_accuracy_report --input .tmp_performance_rescue\champion_forecast_actual_rows.jsonl --format report
+python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_performance_rescue\evidence --output-root .tmp_performance_rescue\engine_sweep --format report
+```
+
 ## Optional Local Ollama LLM Experiment
 
 The optional Ollama LLM experiment is local-only and reads retrieved local evidence records as read-only context.
@@ -226,7 +268,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Expected local result:
 
 ```text
-725 passed
+737 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
@@ -543,7 +585,7 @@ This MVP is bounded by the following rules:
 * real accuracy requires local actual data input
 * no live data
 * no provider API calls
-* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run` workflows
+* bounded local training/tuning is allowed only through explicit `.tmp_full_model_run` or `.tmp_performance_rescue` workflows
 * generated forecast rows, evidence, diagnostics, and model outputs remain untracked
 * no benchmark rerun
 * no action labels

@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import time
+import warnings
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ import numpy as np
 from src.hackaithon_mvp.engine_catalog.baseline_catalog_generator import generate_baseline_catalog
 from src.hackaithon_mvp.forecast_accuracy_evaluator import evaluate_forecast_accuracy
 from src.hackaithon_mvp.model_diagnostics.registry import get_adapter
+from src.hackaithon_mvp.purged_walk_forward_validation import purged_temporal_split
 
 
 SUPPORTED_CLASSIFICATION_MODELS = {
@@ -24,6 +26,8 @@ SUPPORTED_CLASSIFICATION_MODELS = {
     "logistic_l2",
     "ridge_classifier",
     "random_forest",
+    "extra_trees",
+    "linear_svm",
     "sklearn_gradient_boosting",
     "hist_gradient_boosting",
 }
@@ -71,8 +75,9 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def _output_root(path: str | Path) -> Path:
     root = Path(path)
-    if not any(part.lower().startswith(".tmp_full_model_run") for part in root.parts):
-        raise ValueError("output_root must be .tmp_full_model_run or a child path")
+    allowed = (".tmp_full_model_run", ".tmp_performance_rescue")
+    if not any(part.lower().startswith(allowed) for part in root.parts):
+        raise ValueError("output_root must be .tmp_full_model_run, .tmp_performance_rescue, or a child path")
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -176,6 +181,23 @@ def _temporal_split(rows: list[dict], train_fraction: float = 0.7) -> tuple[list
     return rows[:split_index], rows[split_index:]
 
 
+def _purged_or_temporal_split(rows: list[dict], horizon_steps: int) -> tuple[list[dict], list[dict], dict]:
+    split = purged_temporal_split(rows, horizon_steps=horizon_steps, validation_fraction=0.3)
+    if split.get("split_status") == "ready" and int(split.get("validation_row_count") or 0) >= MIN_VALIDATION_ROWS:
+        return list(split["train_rows"]), list(split["validation_rows"]), {
+            "split_method": "purged_temporal",
+            "purged_row_count": split.get("purged_row_count"),
+            "embargoed_row_count": split.get("embargoed_row_count"),
+        }
+    train_rows, validation_rows = _temporal_split(rows)
+    return train_rows, validation_rows, {
+        "split_method": "temporal_fallback_after_purge",
+        "purged_row_count": split.get("purged_row_count"),
+        "embargoed_row_count": split.get("embargoed_row_count"),
+        "purged_split_status": split.get("split_status"),
+    }
+
+
 def _inner_split(rows: list[dict]) -> tuple[list[dict], list[dict]]:
     if len(rows) < 4:
         return rows, rows
@@ -252,8 +274,9 @@ def _sklearn_available() -> tuple[bool, str | None]:
 
 def _classification_candidates(model_key: str):
     from sklearn.dummy import DummyClassifier
-    from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestClassifier
+    from sklearn.ensemble import ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestClassifier
     from sklearn.linear_model import LogisticRegression, RidgeClassifier
+    from sklearn.svm import LinearSVC
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 
@@ -261,19 +284,47 @@ def _classification_candidates(model_key: str):
         return [({"strategy": "most_frequent"}, DummyClassifier(strategy="most_frequent"))]
     if model_key == "logistic_l2":
         return [
-            ({"C": c}, make_pipeline(StandardScaler(), LogisticRegression(C=c, penalty="l2", max_iter=200, solver="liblinear")))
+            (
+                {"C": c, "class_weight": class_weight},
+                make_pipeline(
+                    StandardScaler(),
+                    LogisticRegression(C=c, penalty="l2", class_weight=class_weight, max_iter=250, solver="liblinear"),
+                ),
+            )
             for c in (0.25, 1.0)
+            for class_weight in (None, "balanced")
         ]
     if model_key == "logistic_l1":
         return [
-            ({"C": c}, make_pipeline(StandardScaler(), LogisticRegression(C=c, penalty="l1", max_iter=200, solver="liblinear")))
+            (
+                {"C": c, "class_weight": class_weight},
+                make_pipeline(
+                    StandardScaler(),
+                    LogisticRegression(C=c, penalty="l1", class_weight=class_weight, max_iter=250, solver="liblinear"),
+                ),
+            )
             for c in (0.25, 1.0)
+            for class_weight in (None, "balanced")
+        ]
+    if model_key == "linear_svm":
+        return [
+            (
+                {"C": c, "class_weight": class_weight},
+                make_pipeline(StandardScaler(), LinearSVC(C=c, class_weight=class_weight, max_iter=2000, random_state=42)),
+            )
+            for c in (0.25, 1.0)
+            for class_weight in (None, "balanced")
         ]
     if model_key == "ridge_classifier":
         return [({"alpha": a}, make_pipeline(StandardScaler(), RidgeClassifier(alpha=a))) for a in (0.5, 1.0)]
     if model_key == "random_forest":
         return [
             ({"n_estimators": 30, "max_depth": depth}, RandomForestClassifier(n_estimators=30, max_depth=depth, random_state=42, n_jobs=1))
+            for depth in (4, None)
+        ]
+    if model_key == "extra_trees":
+        return [
+            ({"n_estimators": 40, "max_depth": depth}, ExtraTreesClassifier(n_estimators=40, max_depth=depth, random_state=42, n_jobs=1))
             for depth in (4, None)
         ]
     if model_key == "sklearn_gradient_boosting":
@@ -362,16 +413,21 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
     candidate_results: list[dict[str, Any]] = []
     for params, model in candidates:
         try:
-            model.fit(x_inner, y_inner)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
+                warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+                model.fit(x_inner, y_inner)
             if is_classifier:
                 scores = _positive_scores(model, x_cal)
                 threshold, train_metric = _threshold_from_probabilities([int(value) for value in y_cal], scores)
                 objective = train_metric.get("balanced_accuracy")
+                secondary = train_metric.get("mcc")
             else:
                 preds = [float(value) for value in model.predict(x_cal)]
                 train_metric = _regression_metric([float(value) for value in y_cal], preds)
                 threshold = 0.0
                 objective = -(train_metric.get("rmse") or 999.0)
+                secondary = train_metric.get("balanced_accuracy")
             candidate_results.append(
                 {
                     "params": params,
@@ -379,6 +435,7 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
                     "threshold": threshold,
                     "inner_metric": train_metric,
                     "objective": objective if objective is not None else -999.0,
+                    "secondary_objective": secondary if secondary is not None else -999.0,
                 }
             )
         except Exception as exc:  # noqa: BLE001 - per-model isolation.
@@ -386,14 +443,17 @@ def tune_one_model_spec(spec: dict, train_rows: list[dict], validation_rows: lis
     selectable = [item for item in candidate_results if "model" in item]
     if not selectable:
         return {"tuning_status": "skipped", "skip_reason": "all_candidate_fits_failed"}
-    selectable.sort(key=lambda item: float(item["objective"]), reverse=True)
+    selectable.sort(key=lambda item: (float(item["objective"]), float(item.get("secondary_objective", -999.0))), reverse=True)
     best = selectable[0]
 
     # Refit the selected candidate on the full train split before final validation.
     selected_model = next(model for params, model in candidates if params == best["params"])
     x_train, y_train = _xy(train_rows, feature_columns)
     x_val, y_val = _xy(validation_rows, feature_columns)
-    selected_model.fit(x_train, y_train)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
+        warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+        selected_model.fit(x_train, y_train)
     if is_classifier:
         val_scores = _positive_scores(selected_model, x_val)
         pre_preds = [1 if value >= 0.5 else 0 for value in val_scores]
@@ -495,7 +555,7 @@ def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: s
             "skip_reason": "insufficient_rows_for_model_horizon_target",
             "available_rows": len(rows),
         }
-    train_rows, validation_rows = _temporal_split(rows)
+    train_rows, validation_rows, split_diagnostics = _purged_or_temporal_split(rows, int(spec["horizon"]))
     if len(validation_rows) < MIN_VALIDATION_ROWS:
         return {
             "model_key": spec["model_key"],
@@ -538,6 +598,7 @@ def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: s
         "train_rows": len(train_rows),
         "selected_hyperparameters": tuning.get("selected_hyperparameters"),
         "selected_threshold": tuning.get("selected_threshold"),
+        "split_diagnostics": split_diagnostics,
         "pre_tune_validation_metrics": tuning.get("pre_tune_validation_metrics"),
         "post_tune_validation_metrics": tuning.get("post_tune_validation_metrics"),
         "claim_scope": "diagnostic_only",
@@ -558,6 +619,7 @@ def train_one_model_spec(spec: dict, dataset_rows: list[dict], *, output_root: s
         "post_tune_validation_metrics": tuning.get("post_tune_validation_metrics"),
         "selected_hyperparameters": tuning.get("selected_hyperparameters"),
         "selected_threshold": tuning.get("selected_threshold"),
+        "split_diagnostics": split_diagnostics,
         "forecast_rows_written": len(validation_forecasts),
         "evidence_record": evidence_record,
         "elapsed_seconds": elapsed,
