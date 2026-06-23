@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from src.hackaithon_mvp.clean_forecast_target_builder import build_clean_direction_targets
+from src.hackaithon_mvp.forecast_60pct_release_gate import evaluate_60pct_release_gate
 from src.hackaithon_mvp.forecast_accuracy_evaluator import evaluate_forecast_accuracy
 from src.hackaithon_mvp.forecast_data_expansion import run_optional_data_expansion
 from src.hackaithon_mvp.forecast_edge_feature_builder import build_forecast_edge_features
@@ -60,7 +61,7 @@ def _public(payload: Any) -> Any:
     if isinstance(payload, dict):
         output = {}
         for key, value in payload.items():
-            if key in {"rows", "retained_forecast_rows", "holdout_forecast_rows", "accuracy_evaluation"}:
+            if key in {"rows", "retained_forecast_rows", "holdout_forecast_rows", "validation_forecast_rows", "accuracy_evaluation"}:
                 if isinstance(value, list):
                     output[f"{key}_count"] = len(value)
                 continue
@@ -186,6 +187,20 @@ def run_forecast_edge_pipeline(
     _write_json(root / "engine_universe_summary.json", _public(engine))
 
     status = _status(selection, target_rows=len(target_rows), clean_training_rows=int(training.get("clean_training_rows") or 0))
+    forecast_60pct_gate = evaluate_60pct_release_gate(
+        {
+            "retained_holdout_accuracy": selection.get("retained_holdout_accuracy"),
+            "retained_holdout_balanced_accuracy": selection.get("retained_holdout_balanced_accuracy"),
+            "retained_holdout_mcc": selection.get("retained_holdout_mcc"),
+            "retained_rows": selection.get("retained_holdout_rows"),
+            "retained_coverage": selection.get("retained_coverage"),
+            "retained_baselines": selection.get("retained_baselines"),
+            "retained_forecast_rows": retained_rows,
+            "duplicate_key_severity": "none",
+            "overlap_severity": "none",
+            "leakage_warning": False,
+        }
+    )
     result = {
         "forecast_edge_status": status,
         "output_root": str(root),
@@ -218,7 +233,10 @@ def run_forecast_edge_pipeline(
         "best_ticker": selection.get("best_ticker"),
         "best_ticker_horizon": selection.get("best_ticker_horizon"),
         "selective_forecast_claim_allowed": bool(selection.get("selective_forecast_claim_allowed")),
-        "broad_performance_claim_allowed": bool(selection.get("broad_performance_claim_allowed")),
+        "forecast_release_status": forecast_60pct_gate.get("forecast_release_status"),
+        "forecast_60pct_release_gate": forecast_60pct_gate,
+        "forecast_release_allowed": forecast_60pct_gate.get("forecast_release_allowed"),
+        "broad_performance_claim_allowed": bool(forecast_60pct_gate.get("broad_performance_claim_allowed")),
         "lower_confidence_exploratory": int(min_slice_rows) < 300,
         "elapsed_seconds": round(time.monotonic() - started, 6),
         "claim_boundary": dict(CLAIM_BOUNDARY),
@@ -262,6 +280,8 @@ def render_forecast_edge_report(result: dict) -> str:
         f"- beats previous direction: {result.get('beats_previous_direction')}",
         f"- selective claim allowed: {result.get('selective_forecast_claim_allowed')}",
         f"- broad claim allowed: {result.get('broad_performance_claim_allowed')}",
+        f"- 60 percent release status: {result.get('forecast_release_status')}",
+        f"- 60 percent release allowed: {result.get('forecast_release_allowed')}",
         "",
         "Engine universe:",
         f"- status: {(result.get('engine_universe') or {}).get('engine_universe_run_status')}",

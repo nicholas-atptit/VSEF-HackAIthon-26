@@ -70,6 +70,7 @@ def test_forecast_repair_pipeline_reuses_rows_and_materializes_retained_evidence
     assert result["clean_rows_retained"] == 30
     assert result["allowed_forecast_slices"] == 1
     assert result["retained_balanced_accuracy"] == 1.0
-    assert result["broad_performance_claim_allowed"] is True
+    assert result["forecast_release_status"] == "forecast_release_blocked_insufficient_rows"
+    assert result["broad_performance_claim_allowed"] is False
     assert (tmp_path / ".tmp_forecast_repair" / "retained_forecast_rows.jsonl").exists()
     assert "Forecast Repair Orchestrator" in report

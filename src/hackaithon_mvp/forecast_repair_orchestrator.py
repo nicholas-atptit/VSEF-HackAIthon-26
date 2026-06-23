@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from src.hackaithon_mvp.deoverlapped_forecast_dataset import build_deoverlapped_forecast_dataset
+from src.hackaithon_mvp.forecast_60pct_release_gate import evaluate_60pct_release_gate
 from src.hackaithon_mvp.forecast_accuracy_evaluator import evaluate_forecast_accuracy, load_forecast_accuracy_rows
 from src.hackaithon_mvp.forecast_data_repair_audit import audit_forecast_dataset_integrity
 from src.hackaithon_mvp.fresh_validation_protocol import build_nested_walk_forward_protocol, build_three_way_time_split
@@ -281,6 +282,18 @@ def run_forecast_repair_pipeline(
         and retained_metric.get("beats_previous_direction")
         and not audit.get("leakage_warning")
     )
+    forecast_60pct_gate = evaluate_60pct_release_gate(
+        {
+            "retained_holdout_accuracy": selective.get("global_retained_accuracy"),
+            "retained_holdout_balanced_accuracy": selective.get("global_retained_balanced_accuracy"),
+            "retained_holdout_mcc": selective.get("mcc"),
+            "retained_rows": len(retained_rows),
+            "retained_coverage": selective.get("forecast_coverage"),
+            "retained_baselines": selective.get("baselines_on_retained_rows"),
+            "retained_forecast_rows": retained_rows,
+            "audit": audit,
+        }
+    )
     best_ticker = _best_group(selective.get("by_ticker") or {})
     best_horizon = _best_group(selective.get("by_horizon") or {})
     result = {
@@ -317,7 +330,10 @@ def run_forecast_repair_pipeline(
         "baselines_on_retained_rows": selective.get("baselines_on_retained_rows"),
         "best_allowed_ticker": best_ticker,
         "best_allowed_horizon": best_horizon,
-        "broad_performance_claim_allowed": broad_claim_allowed,
+        "forecast_release_status": forecast_60pct_gate.get("forecast_release_status"),
+        "forecast_60pct_release_gate": forecast_60pct_gate,
+        "forecast_release_allowed": forecast_60pct_gate.get("forecast_release_allowed"),
+        "broad_performance_claim_allowed": bool(broad_claim_allowed and forecast_60pct_gate.get("broad_performance_claim_allowed")),
         "validation_protocol_status": "post_hoc_repair_validation",
         "truly_fresh_holdout_exists": False,
         "claim_boundary": dict(CLAIM_BOUNDARY),
@@ -360,6 +376,9 @@ def render_forecast_repair_report(result: dict) -> str:
         f"- beats random: {retained.get('beats_random')}",
         f"- beats majority: {retained.get('beats_majority')}",
         f"- beats previous direction: {retained.get('beats_previous_direction')}",
+        "",
+        f"60 percent forecast release status: {result.get('forecast_release_status')}",
+        f"60 percent forecast release allowed: {result.get('forecast_release_allowed')}",
         "",
         "Engine universe:",
         f"- status: {engine.get('engine_universe_run_status')}",

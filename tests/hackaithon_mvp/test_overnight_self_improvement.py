@@ -54,7 +54,10 @@ def test_score_mentions_low_coverage_and_does_not_overstate_readiness():
             },
             "release_accuracy_report": {
                 "check_status": "completed",
-                "result": {"release_accuracy_status": "not_ready_no_forecast_actual_rows"},
+                "result": {
+                    "release_accuracy_status": "not_ready_no_forecast_actual_rows",
+                    "forecast_release_status": "forecast_release_blocked_insufficient_rows",
+                },
             },
             "forecast_actual_artifact_discovery": {
                 "check_status": "completed",
@@ -81,6 +84,7 @@ def test_score_mentions_low_coverage_and_does_not_overstate_readiness():
     assert score["overall_score_0_100"] == 85
     assert score["self_improvement_status"] == "needs_forecast_actual_accuracy_before_release"
     assert "forecast_actual_accuracy_missing_before_release" in score["blocking_issues"]
+    assert score["forecast_release_status"] == "forecast_release_blocked_insufficient_rows"
 
 
 def test_self_improvement_audit_runs_and_report_renders():
@@ -90,6 +94,7 @@ def test_self_improvement_audit_runs_and_report_renders():
     assert "overall_score_0_100" in result
     assert "Engine universe evidence coverage" in report
     assert "Release accuracy status" in report
+    assert "60 percent forecast release status" in report
     assert "Full release model pipeline" in report
     assert "Evidence coverage ratio" in report
     assert result["overall_score_0_100"] == 85

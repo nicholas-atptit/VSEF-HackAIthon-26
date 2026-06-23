@@ -57,6 +57,7 @@ def test_release_report_with_small_input_allows_demo_accuracy_disclosure(tmp_pat
     assert result["by_ticker"]
     assert result["by_horizon"]
     assert result["by_model"]
+    assert result["forecast_release_status"] == "forecast_release_blocked_insufficient_rows"
 
 
 def test_release_report_marks_larger_threshold_ready_input_as_tuning_required(tmp_path):
@@ -80,6 +81,7 @@ def test_release_report_includes_tuning_output_when_provided(tmp_path):
 
     assert result["release_accuracy_status"] == "release_ready_with_local_accuracy"
     assert result["tuning_result"]["tuning_status"] == "completed"
+    assert result["forecast_release_status"] == "forecast_release_blocked_insufficient_rows"
 
 
 def test_release_report_discover_mode_is_dry(tmp_path, monkeypatch):
@@ -98,5 +100,6 @@ def test_release_report_render_has_no_market_action_labels(tmp_path):
     report = render_release_accuracy_report(build_release_accuracy_report(input_path=str(input_path))).lower()
 
     assert "Release Accuracy Report" in render_release_accuracy_report(build_release_accuracy_report(input_path=str(input_path)))
+    assert "60 percent forecast release status" in report
     for forbidden in ("buy", "sell", "hold"):
         assert re.search(rf"\b{forbidden}\b", report) is None

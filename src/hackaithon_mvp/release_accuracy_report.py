@@ -13,6 +13,7 @@ from src.hackaithon_mvp.forecast_accuracy_evaluator import (
     load_forecast_accuracy_rows,
 )
 from src.hackaithon_mvp.eligible_model_policy_tuner import tune_all_eligible_models
+from src.hackaithon_mvp.forecast_60pct_release_gate import evaluate_60pct_release_gate
 from src.hackaithon_mvp.release_model_tuning_gate import run_release_model_tuning_gate
 
 
@@ -116,6 +117,18 @@ def build_release_accuracy_report(
         tuning_result = tune_all_eligible_models(rows)
     status = _release_status(accuracy, tuning_gate, tuning_result)
     directional = (accuracy.get("global") or {}).get("directional", {})
+    forecast_60pct_gate = evaluate_60pct_release_gate(
+        {
+            "accuracy_evaluation": accuracy,
+            "evaluated_row_count": accuracy.get("evaluated_row_count", 0),
+            "final_holdout_accuracy": directional.get("accuracy"),
+            "final_holdout_balanced_accuracy": directional.get("balanced_accuracy"),
+            "final_holdout_mcc": directional.get("mcc"),
+            "final_holdout_rows": directional.get("coverage_count"),
+            "final_holdout_coverage": 1.0 if directional.get("coverage_count") else 0.0,
+            "baseline_comparison": accuracy.get("baseline_comparison"),
+        }
+    )
     limitations = []
     if not input_path:
         limitations.append("explicit_input_required_for_accuracy")
@@ -138,6 +151,10 @@ def build_release_accuracy_report(
         "evaluated_row_count": accuracy.get("evaluated_row_count", 0),
         "global_directional_accuracy": directional.get("accuracy"),
         "global_balanced_accuracy": directional.get("balanced_accuracy"),
+        "forecast_release_status": forecast_60pct_gate.get("forecast_release_status"),
+        "forecast_60pct_release_gate": forecast_60pct_gate,
+        "forecast_release_allowed": forecast_60pct_gate.get("forecast_release_allowed"),
+        "forecast_broad_performance_claim_allowed": forecast_60pct_gate.get("broad_performance_claim_allowed"),
         "confusion_matrix": directional.get("confusion_matrix"),
         "numeric_metrics": (accuracy.get("global") or {}).get("numeric"),
         "probability_metrics": (accuracy.get("global") or {}).get("probability"),
@@ -151,6 +168,8 @@ def build_release_accuracy_report(
         "tuning_result": tuning_result,
         "release_gate": {
             "status": status,
+            "forecast_release_status": forecast_60pct_gate.get("forecast_release_status"),
+            "hard_60pct_gate_passed": forecast_60pct_gate.get("forecast_release_allowed"),
             "min_release_directional_rows": MIN_RELEASE_DIRECTIONAL_ROWS,
             "human_review_required": True,
         },
@@ -189,6 +208,7 @@ def render_release_accuracy_report(result: dict) -> str:
     tuning = result.get("tuning_readiness") or {}
     tuning_result = result.get("tuning_result") or {}
     release_gate = result.get("release_gate") or {}
+    forecast_gate = result.get("forecast_60pct_release_gate") or {}
     tuned_lines = []
     for item in tuning_result.get("tuned_models", []) if isinstance(tuning_result, dict) else []:
         tuned_lines.append(
@@ -235,6 +255,8 @@ def render_release_accuracy_report(result: dict) -> str:
         "Tuning validation summary:",
         *tuned_lines,
         f"Release gate status: {release_gate.get('status')}",
+        f"60 percent forecast release status: {forecast_gate.get('forecast_release_status')}",
+        f"60 percent forecast release allowed: {forecast_gate.get('forecast_release_allowed')}",
         "",
         "Limitations:",
         *[f"- {item}" for item in (result.get("limitations") or ["none"])],

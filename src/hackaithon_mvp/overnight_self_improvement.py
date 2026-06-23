@@ -283,8 +283,12 @@ def score_self_improvement_readiness(result: dict) -> dict:
         blocking.append("tuning_readiness_status_invalid")
 
     accuracy_missing = release_accuracy.get("release_accuracy_status") == "not_ready_no_forecast_actual_rows"
+    forecast_release_status = release_accuracy.get("forecast_release_status")
     if accuracy_missing:
         blocking.append("forecast_actual_accuracy_missing_before_release")
+        score = min(score, 85)
+    elif forecast_release_status and forecast_release_status != "forecast_release_passed_60pct_global":
+        blocking.append("forecast_release_blocked_by_60pct_gate")
         score = min(score, 85)
     tuning_deferred_no_labeled_data = release_tuning.get("tuning_gate_status") == "not_ready_no_labeled_data"
     if (
@@ -336,6 +340,7 @@ def score_self_improvement_readiness(result: dict) -> dict:
         "forecast_actual_artifact_discovery_status": artifact_discovery.get("discovery_status"),
         "forecast_actual_candidate_files": artifact_discovery.get("candidate_file_count"),
         "release_accuracy_status": release_accuracy.get("release_accuracy_status"),
+        "forecast_release_status": forecast_release_status,
         "release_model_tuning_gate_status": release_tuning.get("tuning_gate_status"),
         "eligible_model_policy_tuning_status": eligible_tuning.get("tuning_status"),
         "full_release_model_pipeline_status": full_pipeline.get("pipeline_status"),
@@ -367,6 +372,7 @@ def render_self_improvement_report(result: dict) -> str:
         f"Claim audit status: {claim.get('audit_status')}",
         f"Tuning readiness: {tuning.get('readiness_status')}",
         f"Release accuracy status: {release_accuracy.get('release_accuracy_status')}",
+        f"60 percent forecast release status: {release_accuracy.get('forecast_release_status')}",
         f"Release tuning gate: {release_tuning.get('tuning_gate_status')}",
         f"Forecast-vs-actual candidate files: {discovery.get('candidate_file_count')}",
         f"Full release model pipeline: {full_pipeline.get('pipeline_status')}",

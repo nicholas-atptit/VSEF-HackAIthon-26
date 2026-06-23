@@ -390,6 +390,7 @@ def _train_group(
         "overlap_severity": "none",
         "leakage_warning": False,
         "holdout_forecast_rows": holdout_forecasts,
+        "validation_forecast_rows": selected.get("validation_forecast_rows") or [],
         "candidate_summaries": [
             {key: value for key, value in item.items() if key not in {"validation_forecast_rows", "model"}}
             for item in candidate_results

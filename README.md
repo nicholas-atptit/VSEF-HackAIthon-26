@@ -124,6 +124,8 @@ Current scope:
 | Forecast Edge Model Trainer | Implemented | Trains bounded clean local model groups with three-way temporal splits, validation-only selection, and one holdout check for strict slice gating |
 | Forecast Edge Selector | Implemented | Allows only robust clean holdout slices that beat random and majority baselines with positive MCC, while disclosing retained coverage |
 | Forecast Edge Orchestrator | Implemented | Runs planning, optional disabled expansion, clean targets, rich features, bounded training, strict selection, retained evidence, and coverage-aware reporting |
+| 60% Forecast Release Gate | Implemented | Blocks forecast-performance release below 60% final holdout or retained-holdout accuracy/balanced accuracy with row, coverage, baseline, MCC, and data-quality checks |
+| 60% Forecast Edge Search | Implemented | Runs focused clean local search with validation-only confidence gating and returns blocked release status when no honest 60% final holdout result is found |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -342,6 +344,55 @@ python -m src.hackaithon_mvp.forecast_repair_orchestrator --output-root .tmp_for
 python -m src.hackaithon_mvp.full_engine_universe_runner --evidence-root .tmp_forecast_repair\evidence --output-root .tmp_forecast_repair\engine_sweep --format report
 ```
 
+## 60% Forecast Release Gate
+
+Forecast-performance release now requires a hard 60% final holdout gate. A result below 60% cannot be presented as an accurate forecasting result, even if it beats random or majority baselines on retained rows.
+
+Gate requirements:
+
+- global release requires final holdout accuracy or balanced accuracy >=60%, at least 1,000 holdout rows, coverage >=30%, positive MCC, random and majority baselines beaten, no high-severity leakage or duplicate-key warning, and no hidden post-hoc tuning on final holdout
+- selective release requires retained final holdout balanced accuracy >=60%, retained accuracy or balanced accuracy >=60%, at least 500 retained rows, retained coverage reported, coverage >=10%, positive MCC, random baseline beaten, and majority baseline reported
+- slice-only findings require final holdout balanced accuracy >=60%, row count disclosure, Wilson interval, no leakage warning, no high duplicate/overlap severity, and at least 300 rows for preferred status; 150-299 rows are exploratory only
+- validation-only results do not count as final performance
+- diagnostic/governance demo readiness remains separate from forecast-performance readiness
+
+Latest focused 60% search (`.tmp_60pct_gate`, strict run plus exploratory `--min-slice-rows 150` rerun):
+
+- clean target rows: 118,768
+- duplicate target keys dropped: 0
+- overlapping target windows dropped: 232,160
+- feature blocks generated: market_context, liquidity, technical, cross_sectional
+- model groups attempted/trained/tuned: 33 / 32 / 32
+- strict selector allowed/rejected slices: 7 / 26
+- validation-confidence retained rows used for the hard gate: 502
+- validation-confidence retained coverage: 0.031734
+- retained accuracy: 0.515936
+- retained balanced accuracy: 0.516428
+- retained MCC: 0.033908
+- retained-row baselines: random 0.500000; majority 0.501992; previous-direction 0.508299
+- global final holdout accuracy/balanced accuracy: 0.551250 / 0.556390 over 800 rows
+- best slice observed: MBB h10 random_forest, balanced accuracy 0.784616 over 23 rows, blocked as insufficient rows
+- global 60% gate passed: no
+- selective 60% gate passed: no
+- slice-only 60% gate passed: no
+- final forecast release status: `forecast_release_blocked_below_60pct`
+- broad performance claim allowed: no
+
+Required wording:
+
+```text
+No honest >=60% forecast mode was found on the current local data under strict holdout gates.
+```
+
+The product can still be demonstrated as a diagnostic/governance MVP, but not as an accurate forecaster.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.forecast_60pct_release_gate --format report
+python -m src.hackaithon_mvp.forecast_60pct_edge_search --output-root .tmp_60pct_gate --max-models 300 --max-workers 1 --min-slice-rows 300 --format report
+```
+
 ## Forecast Edge Pipeline
 
 The forecast edge sprint adds a cleaner target protocol and richer local feature set before any slice is allowed to emit diagnostic forecast rows. It prioritizes h1/h5/h10/h20, builds non-overlapping targets, adds market-context, liquidity, technical, and cross-sectional features, trains bounded local model groups with validation-only selection, and keeps strict holdout gates for retained slices.
@@ -378,7 +429,8 @@ Latest strict local forecast edge run (`--max-models 300`, `--min-slice-rows 300
 - best ticker-horizon on retained rows: MBB h10, balanced accuracy 0.784616
 - generated-evidence engine universe: skipped after retained evidence because the existing runner currently allows earlier temp roots but not `.tmp_forecast_edge`
 - forecast edge status: `forecast_edge_found`
-- selective clean-local forecast claim allowed: yes, with coverage disclosed
+- selective clean-local forecast claim allowed under the earlier sub-60% gate: yes, with coverage disclosed
+- 60% forecast release status: `forecast_release_blocked_below_60pct`
 - broad performance claim allowed: no
 
 Allowed retained slices:
@@ -394,10 +446,10 @@ Allowed retained slices:
 Acceptable bounded wording:
 
 ```text
-Selective forecast edge found on clean local h1/h10 slices: balanced accuracy 0.557273 at 20.8926% coverage, human review required.
+Earlier sub-60% selective forecast edge found on clean local h1/h10 slices: balanced accuracy 0.557273 at 20.8926% coverage, human review required.
 ```
 
-This is not enough for a broad forecast-accuracy claim. Most slices are still rejected by strict gates, so coverage must remain attached to the metric.
+This is below the hard 60% release threshold and is not enough for a forecast-performance release claim. Most slices are still rejected by strict gates, so coverage must remain attached to the metric.
 
 Examples:
 
@@ -441,7 +493,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Latest local result:
 
 ```text
-780 passed
+787 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
