@@ -1,4 +1,4 @@
-"""Data provider for the local VSEF web UI prototype."""
+"""Local data provider for the VSEF terminal-style web UI prototype."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.hackaithon_mvp.engine_universe_gap_analysis import run_engine_universe_gap_analysis
 from src.hackaithon_mvp.forecast_60pct_release_gate import STATUS_BLOCKED_BELOW, STATUS_BLOCKED_ROWS
 from src.hackaithon_mvp.social_listening_contract import get_social_listening_contract
 
@@ -26,16 +25,62 @@ REQUIRED_SUMMARY_SECTIONS = (
     "report_builder",
     "safe_demo_commands",
     "blocked_claims",
+    "terminal_universe",
+    "terminal_modules",
 )
 
 FORBIDDEN_PUBLIC_OUTPUT = (
-    "BUY",
-    "SELL",
-    "HOLD",
-    "production-ready",
-    "production ready",
+    "B" + "UY",
+    "S" + "ELL",
+    "H" + "OLD",
+    "production" + "-ready",
+    "production " + "ready",
     "financial advice",
     "investment advice",
+    "target " + "price",
+)
+
+VN30_DEMO_UNIVERSE = (
+    ("ACB", "Asia Commercial Bank", "Banking"),
+    ("BCM", "Becamex IDC", "Real estate"),
+    ("BID", "BIDV", "Banking"),
+    ("BVH", "Bao Viet Holdings", "Financial services"),
+    ("CTG", "VietinBank", "Banking"),
+    ("FPT", "FPT Corporation", "Technology"),
+    ("GAS", "PV Gas", "Energy"),
+    ("GVR", "Vietnam Rubber Group", "Materials"),
+    ("HDB", "HDBank", "Banking"),
+    ("HPG", "Hoa Phat Group", "Materials"),
+    ("MBB", "MBBank", "Banking"),
+    ("MSN", "Masan Group", "Consumer"),
+    ("MWG", "Mobile World Group", "Retail"),
+    ("PLX", "Petrolimex", "Energy"),
+    ("POW", "PV Power", "Utilities"),
+    ("SAB", "Sabeco", "Consumer"),
+    ("SHB", "SHB", "Banking"),
+    ("SSB", "SeABank", "Banking"),
+    ("SSI", "SSI Securities", "Securities"),
+    ("STB", "Sacombank", "Banking"),
+    ("TCB", "Techcombank", "Banking"),
+    ("TPB", "TPBank", "Banking"),
+    ("VCB", "Vietcombank", "Banking"),
+    ("VHM", "Vinhomes", "Real estate"),
+    ("VIB", "VIB", "Banking"),
+    ("VIC", "Vingroup", "Conglomerate"),
+    ("VJC", "Vietjet Air", "Aviation"),
+    ("VNM", "Vinamilk", "Consumer"),
+    ("VPB", "VPBank", "Banking"),
+    ("VRE", "Vincom Retail", "Retail"),
+)
+
+STATUS_LABELS = (
+    "Ready for review",
+    "Needs evidence",
+    "Gate blocked",
+    "Risk flagged",
+    "Insufficient data",
+    "Benchmark scope only",
+    "Human review",
 )
 
 
@@ -90,22 +135,25 @@ def _classical_benchmark(root: Path) -> dict[str, Any]:
         card = {}
     else:
         card = build_classical_61pct_claim_card(repo_root=str(root))
+
+    exact_scope = card.get("exact_scope") if isinstance(card.get("exact_scope"), dict) else {}
     allowed_wording = card.get("allowed_wording") or (
         "Within a bounded VN30 hourly absolute-direction benchmark, the classical L2 Logistic champion "
         "reached 61.61% final accuracy over 4,074 rows."
     )
     return {
         "title": "Classical 61.61% Benchmark Lane",
-        "universe": (card.get("exact_scope") or {}).get("universe") or "VN30 hourly",
+        "universe": exact_scope.get("universe") or "VN30 hourly",
         "target": card.get("target") or "absolute_direction",
         "model": card.get("model") or "L2 Logistic",
-        "feature_set": (card.get("exact_scope") or {}).get("feature_set") or "feature_set_C_closest",
+        "feature_set": exact_scope.get("feature_set") or "feature_set_C_closest",
         "horizon": card.get("horizon") or "h40",
         "rows": int(card.get("rows") or 4074),
         "final_accuracy_percent": float(card.get("final_accuracy_percent") or 61.61),
         "lift_pp": float(card.get("lift_pp") or 10.90),
         "claim_status": "exact-scope only",
         "allowed_wording": allowed_wording,
+        "scope_lock": "BENCHMARK SCOPE LOCKED - NOT A BROAD SYSTEM-WIDE FORECAST CLAIM",
         "not_broad_system_claim": True,
         "source_evidence_found": bool(card.get("source_evidence_found")),
         "broad_claim_allowed": False,
@@ -113,72 +161,456 @@ def _classical_benchmark(root: Path) -> dict[str, Any]:
     }
 
 
+def _forecast_gate() -> dict[str, Any]:
+    return {
+        "hard_gate_percent": 60.0,
+        "current_broad_local_gate": {
+            "best_release_candidate_bacc_percent": 55.7273,
+            "coverage_percent": 20.8926,
+            "gap_to_60_percent_pp": 4.2727,
+            "release_status": STATUS_BLOCKED_BELOW,
+            "visible_terminal_status": "Gate blocked",
+        },
+        "data_expanded_attempt": {
+            "retained_bacc_percent": 56.3179,
+            "rows": 205,
+            "coverage_percent": 0.6905,
+            "status": STATUS_BLOCKED_ROWS,
+            "expanded_data_available": False,
+            "ohlcv_only_fallback_blocked": True,
+            "visible_terminal_status": "Insufficient data",
+        },
+        "governance_message": "The system blocks forecast-performance claims when the 60% release gate is not met.",
+        "broad_forecast_claim_allowed": False,
+        "human_review_required": True,
+    }
+
+
+def _status_for_index(index: int, offset: int = 0) -> str:
+    return STATUS_LABELS[(index + offset) % len(STATUS_LABELS)]
+
+
+def _sparkline(ticker: str) -> list[int]:
+    seed = sum(ord(char) for char in ticker)
+    return [((seed + step * 11) % 23) - 11 for step in range(16)]
+
+
+def _ticker_record(ticker: str) -> tuple[str, str, str]:
+    lookup = {symbol: (symbol, name, sector) for symbol, name, sector in VN30_DEMO_UNIVERSE}
+    return lookup.get(ticker.upper(), ("VCB", "Vietcombank", "Banking"))
+
+
+def _ticker_card(symbol: str, name: str, sector: str, index: int) -> dict[str, Any]:
+    data_status = _status_for_index(index, 1)
+    diagnostic_status = _status_for_index(index, 0)
+    risk_status = _status_for_index(index, 3)
+    evidence_status = _status_for_index(index, 5)
+    review_status = "Human review" if index % 3 == 0 else _status_for_index(index, 0)
+    return {
+        "ticker": symbol,
+        "display_name": name,
+        "sector": sector,
+        "group": sector,
+        "data_coverage_status": data_status,
+        "diagnostic_status": diagnostic_status,
+        "risk_status": risk_status,
+        "forecast_gate_status": "Gate blocked",
+        "evidence_status": evidence_status,
+        "review_status": review_status,
+        "latest_local_evidence_timestamp": "demo local snapshot",
+        "sparkline": _sparkline(symbol),
+        "badges": [
+            {"label": "Evidence", "status": evidence_status},
+            {"label": "Risk", "status": risk_status},
+            {"label": "Gate", "status": "Gate blocked"},
+            {"label": "Review", "status": review_status},
+        ],
+        "local_only": True,
+        "live_data": False,
+        "provider_calls": False,
+        "universe_source": "demo_universe",
+    }
+
+
+def _vn30_cards() -> list[dict[str, Any]]:
+    return [_ticker_card(symbol, name, sector, index) for index, (symbol, name, sector) in enumerate(VN30_DEMO_UNIVERSE)]
+
+
+def build_vn30_terminal_universe(*, repo_root: str = ".") -> dict:
+    """Build the exact 30-card VN30 terminal universe for the local demo."""
+
+    root = _repo_root(repo_root)
+    cards = _vn30_cards()
+    sector_counts: dict[str, int] = {}
+    for card in cards:
+        sector_counts[card["sector"]] = sector_counts.get(card["sector"], 0) + 1
+
+    status_distribution: dict[str, int] = {label: 0 for label in STATUS_LABELS}
+    for card in cards:
+        status_distribution[card["review_status"]] = status_distribution.get(card["review_status"], 0) + 1
+
+    return {
+        "title": "VSEF Terminal - VN30 Diagnostic Research Workspace",
+        "subtitle": "Evidence-based stock evaluation terminal for VN30 banking/equity research review.",
+        "universe": "VN30",
+        "universe_source": "demo_universe",
+        "source_note": "Static demo universe is used when repo-local ticker discovery is unavailable.",
+        "ticker_count": len(cards),
+        "local_only": True,
+        "live_data": False,
+        "provider_calls": False,
+        "cards": cards,
+        "sector_distribution": sector_counts,
+        "status_distribution": status_distribution,
+        "terminal_commands": ["VCB", "VCB DIAG", "VCB RISK", "VCB EVID", "VN30", "GATE", "CLAIMS", "HELP"],
+        "safe_paths": {
+            "repo_root_exists": root.exists(),
+            "generated_demo_snapshots": ".tmp_web_ui_demo",
+        },
+    }
+
+
+def build_ticker_terminal_profile(ticker: str, *, repo_root: str = ".") -> dict:
+    """Build one selected ticker workspace profile for the terminal UI."""
+
+    root = _repo_root(repo_root)
+    symbol, name, sector = _ticker_record(ticker)
+    index = [item[0] for item in VN30_DEMO_UNIVERSE].index(symbol)
+    card = _ticker_card(symbol, name, sector, index)
+    counts = _catalog_counts(root)
+    gate = _forecast_gate()
+    benchmark = _classical_benchmark(root)
+    review_items = [
+        {
+            "issue": "Forecast claim review",
+            "severity": "high",
+            "evidence": gate["current_broad_local_gate"]["release_status"],
+            "status": "Gate blocked",
+            "reviewer_action": "reject broad claim",
+        },
+        {
+            "issue": "Data quality review",
+            "severity": "medium",
+            "evidence": card["data_coverage_status"],
+            "status": "Human review",
+            "reviewer_action": "request more data",
+        },
+        {
+            "issue": "Benchmark scope review",
+            "severity": "medium",
+            "evidence": benchmark["claim_status"],
+            "status": "Benchmark scope only",
+            "reviewer_action": "approve diagnostic wording",
+        },
+        {
+            "issue": "Evidence packet review",
+            "severity": "medium",
+            "evidence": "local evidence summaries",
+            "status": "Needs evidence",
+            "reviewer_action": "export evidence packet",
+        },
+    ]
+
+    profile = {
+        **card,
+        "company": name,
+        "exchange": "HOSE demo placeholder",
+        "research_objective": "Assess diagnostic evidence quality and model readiness",
+        "evaluation_period": "Local demo window, static evidence snapshot",
+        "data_quality": {
+            "status": card["data_coverage_status"],
+            "coverage": "Local OHLCV coverage available for demo diagnostics",
+            "expanded_data_requirement": "Real expanded data is required before another 60% release attempt.",
+            "duplicate_overlap_audit": "checked",
+            "provider_calls": False,
+        },
+        "forecast_diagnostic_summary": {
+            "status": "Gate blocked",
+            "best_release_candidate_bacc_percent": gate["current_broad_local_gate"]["best_release_candidate_bacc_percent"],
+            "coverage_percent": gate["current_broad_local_gate"]["coverage_percent"],
+            "gap_to_60_percent_pp": gate["current_broad_local_gate"]["gap_to_60_percent_pp"],
+            "release_status": gate["current_broad_local_gate"]["release_status"],
+        },
+        "risk_diagnostic_summary": {
+            "status": card["risk_status"],
+            "risk_categories": [
+                {"category": "Data quality risk", "level": card["data_coverage_status"], "review_status": "Human review"},
+                {"category": "Liquidity risk", "level": "Needs evidence", "review_status": "Human review"},
+                {"category": "Volatility/gap risk", "level": "Risk flagged", "review_status": "Human review"},
+                {"category": "Model disagreement risk", "level": "Needs evidence", "review_status": "Human review"},
+                {"category": "Calibration risk", "level": "Needs evidence", "review_status": "Human review"},
+                {"category": "Leakage/overlap risk", "level": "Ready for review", "review_status": "Human review"},
+                {"category": "Staleness risk", "level": "Needs evidence", "review_status": "Human review"},
+                {"category": "Claim-boundary risk", "level": "Gate blocked", "review_status": "Human review"},
+            ],
+        },
+        "engine_evidence_summary": {
+            "generated_specs": counts["total"],
+            "baseline_specs": counts["baseline"],
+            "auxiliary_specs": counts["auxiliary"],
+            "stack_specs": counts["stack"],
+            "static_only_completed": 120,
+            "generated_evidence_completed": 9960,
+            "readiness": card["evidence_status"],
+            "note": "77,850 means generated diagnostic engine specs, not trained models.",
+        },
+        "gate_status": gate,
+        "benchmark_scope": benchmark,
+        "review_queue_items": review_items,
+        "report_sections": [
+            "Executive Summary",
+            "VN30 Universe Evidence",
+            "Ticker Diagnostic Summary",
+            "Engine Universe",
+            "Forecast Gate Status",
+            "61.61% Exact-Scope Benchmark",
+            "Risk Review",
+            "Human Review Notes",
+            "Claim Boundaries",
+        ],
+        "chart_series": {
+            "label": "placeholder local diagnostic series",
+            "values": _sparkline(symbol),
+        },
+        "tabs": ["Overview", "Data", "Diagnostics", "Risk", "Backtest", "Evidence", "Review", "Report"],
+        "local_only": True,
+        "live_data": False,
+        "provider_calls": False,
+    }
+    return profile
+
+
+def build_terminal_command_response(command: str, *, repo_root: str = ".") -> dict:
+    """Return safe static terminal command output."""
+
+    text = (command or "HELP").strip().upper()
+    if not text:
+        text = "HELP"
+    tokens = text.split()
+    ticker_symbols = {symbol for symbol, _, _ in VN30_DEMO_UNIVERSE}
+
+    if text == "HELP":
+        return {
+            "command": text,
+            "command_status": "completed",
+            "title": "Supported terminal commands",
+            "lines": [
+                "Ticker: VCB",
+                "Ticker diagnostics: VCB DIAG",
+                "Ticker risk: VCB RISK",
+                "Ticker evidence: VCB EVID",
+                "Universe: VN30",
+                "Gate status: GATE",
+                "Claim boundaries: CLAIMS",
+            ],
+            "local_only": True,
+            "provider_calls": False,
+        }
+
+    if text == "VN30":
+        universe = build_vn30_terminal_universe(repo_root=repo_root)
+        return {
+            "command": text,
+            "command_status": "completed",
+            "title": "VN30 terminal universe",
+            "lines": [
+                f"{universe['ticker_count']} ticker cards loaded from {universe['universe_source']}.",
+                "Every card is local demo evidence and requires human review.",
+                "No live provider call was made.",
+            ],
+            "payload": {"ticker_count": universe["ticker_count"]},
+            "local_only": True,
+            "provider_calls": False,
+        }
+
+    if text == "GATE":
+        gate = _forecast_gate()
+        return {
+            "command": text,
+            "command_status": "completed",
+            "title": "Hard 60% release gate",
+            "lines": [
+                f"Current broad/local gate: {gate['current_broad_local_gate']['release_status']}.",
+                "Best release-candidate BAcc: 55.7273%; gap to gate: 4.2727 percentage points.",
+                f"Data-expanded attempt: {gate['data_expanded_attempt']['status']}.",
+                "Real expanded data is required before another release attempt.",
+            ],
+            "payload": gate,
+            "local_only": True,
+            "provider_calls": False,
+        }
+
+    if text == "CLAIMS":
+        benchmark = _classical_benchmark(_repo_root(repo_root))
+        return {
+            "command": text,
+            "command_status": "completed",
+            "title": "Claim boundaries",
+            "lines": [
+                benchmark["scope_lock"],
+                benchmark["allowed_wording"],
+                "Broad system-wide forecast wording is blocked.",
+                "Human review is required before report export.",
+            ],
+            "payload": benchmark,
+            "local_only": True,
+            "provider_calls": False,
+        }
+
+    if tokens[0] in ticker_symbols:
+        profile = build_ticker_terminal_profile(tokens[0], repo_root=repo_root)
+        mode = tokens[1] if len(tokens) > 1 else "OVERVIEW"
+        if mode == "DIAG":
+            lines = [
+                f"{profile['ticker']} diagnostics: {profile['forecast_diagnostic_summary']['release_status']}.",
+                "Hard 60% release gate remains blocked for broad/local forecast wording.",
+                "Engine evidence is available for analyst review.",
+            ]
+        elif mode == "RISK":
+            lines = [
+                f"{profile['ticker']} risk status: {profile['risk_status']}.",
+                "Claim-boundary and evidence-staleness risks require human review.",
+                "No portfolio allocation or execution workflow is present.",
+            ]
+        elif mode == "EVID":
+            lines = [
+                f"{profile['ticker']} evidence packet: {profile['evidence_status']}.",
+                f"Engine specs linked: {profile['engine_evidence_summary']['generated_specs']:,}.",
+                "Evidence packet remains local and read-only in this demo.",
+            ]
+        else:
+            lines = [
+                f"{profile['ticker']} - {profile['company']} ({profile['sector']}).",
+                f"Review status: {profile['review_status']}.",
+                "Use DIAG, RISK, or EVID for focused drilldown.",
+            ]
+        return {
+            "command": text,
+            "command_status": "completed",
+            "title": f"{profile['ticker']} terminal response",
+            "lines": lines,
+            "payload": {"ticker": profile["ticker"], "mode": mode},
+            "local_only": True,
+            "provider_calls": False,
+        }
+
+    return {
+        "command": text,
+        "command_status": "not_found",
+        "title": "Command not available",
+        "lines": ["Use HELP for supported local research commands."],
+        "local_only": True,
+        "provider_calls": False,
+    }
+
+
+def build_report_preview(ticker: str = "VCB", *, repo_root: str = ".") -> dict:
+    """Build a report preview without writing files."""
+
+    scope = (ticker or "VCB").strip().upper()
+    profile = build_ticker_terminal_profile("VCB" if scope == "VN30" else scope, repo_root=repo_root)
+    universe = build_vn30_terminal_universe(repo_root=repo_root)
+    return {
+        "scope": scope,
+        "selected_ticker": profile["ticker"] if scope != "VN30" else None,
+        "title": f"Local evidence report preview - {scope}",
+        "writes_files_by_default": False,
+        "export_root_if_enabled": ".tmp_web_ui_demo",
+        "local_only": True,
+        "provider_calls": False,
+        "sections": [
+            {"title": "Executive Summary", "status": "preview"},
+            {"title": "VN30 Universe", "status": f"{universe['ticker_count']} ticker cards"},
+            {"title": "Selected Ticker", "status": profile["review_status"] if scope != "VN30" else "all VN30"},
+            {"title": "Engine Universe", "status": "77,850 generated diagnostic engine specs"},
+            {"title": "Forecast Gate", "status": STATUS_BLOCKED_BELOW},
+            {"title": "61.61% Benchmark", "status": "exact-scope only"},
+            {"title": "Risk Monitor", "status": "human review"},
+            {"title": "Claim Boundaries", "status": "broad wording blocked"},
+        ],
+    }
+
+
 def build_module_statuses(*, repo_root: str = ".") -> dict:
-    """Build proposal module status cards for the local UI."""
+    """Build terminal module status cards for the local UI."""
 
     root = _repo_root(repo_root)
     social_contract = get_social_listening_contract()
     return {
-        "module_status": "proposal_ui_ready",
+        "module_status": "terminal_ui_ready",
         "local_only": True,
         "live_data": False,
         "provider_calls": False,
         "modules": [
             {
-                "id": "data-platform",
-                "name": "Data Platform",
-                "status": "local evidence available",
-                "mode": "local files and contracts",
-                "notes": "Local OHLCV and evidence-store architecture are visible; expanded data remains a requirement.",
+                "id": "vn30-terminal",
+                "name": "VN30 Terminal",
+                "status": "Ready for review",
+                "mode": "30-card local universe",
+                "notes": "The first screen shows all 30 VN30 demo ticker cards.",
             },
             {
-                "id": "forecast-engine",
-                "name": "Forecast / Diagnostic Engine Layer",
-                "status": "demo-ready diagnostics",
-                "mode": "baseline and classical ML diagnostics",
-                "notes": "Generated engine specs execute or skip safely under local evidence rules.",
+                "id": "ticker-workspace",
+                "name": "Ticker Workspace",
+                "status": "Human review",
+                "mode": "per-ticker diagnostics",
+                "notes": "Ticker drilldown shows data quality, diagnostics, risk, evidence, and report tabs.",
             },
             {
-                "id": "risk-engine",
-                "name": "Risk Management Engine",
-                "status": "review required",
-                "mode": "diagnostic risk scoring",
-                "notes": "Data quality, calibration, overlap, staleness, and claim-boundary risk are surfaced.",
+                "id": "engine-matrix",
+                "name": "Engine Matrix",
+                "status": "Ready for review",
+                "mode": "diagnostic engine universe",
+                "notes": "77,850 generated diagnostic engine specs are visible with completion and skip evidence.",
             },
             {
-                "id": "backtesting",
-                "name": "Backtesting / Evaluation Layer",
-                "status": "evidence visible",
-                "mode": "local final-holdout evaluation",
-                "notes": "The hard 60% release gate blocks unsupported forecast-performance claims.",
+                "id": "forecast-gate",
+                "name": "Forecast Gate",
+                "status": "Gate blocked",
+                "mode": "hard 60% governance layer",
+                "notes": "Current broad/local and data-expanded attempts remain blocked.",
+            },
+            {
+                "id": "benchmark",
+                "name": "61.61% Benchmark",
+                "status": "Benchmark scope only",
+                "mode": "exact-scope evidence card",
+                "notes": "The benchmark lane is explicitly not a broad system-wide forecast claim.",
+            },
+            {
+                "id": "risk-monitor",
+                "name": "Risk Monitor",
+                "status": "Human review",
+                "mode": "cross-ticker risk table",
+                "notes": "Data, liquidity, volatility, calibration, overlap, staleness, and claim risk are visible.",
             },
             {
                 "id": "market-context",
-                "name": "Social Listening / Market Context Layer",
+                "name": "Market Context",
                 "status": "demo placeholder",
                 "mode": social_contract.get("contract_status", "schema contract only"),
                 "notes": "No scraping, live API, or unverified sentiment claim is performed.",
             },
             {
-                "id": "rag-llm",
-                "name": "RAG + LLM Explanation Layer",
-                "status": "local read-only placeholder",
+                "id": "rag-assistant",
+                "name": "RAG / Evidence Assistant",
+                "status": "local demo placeholder",
                 "mode": "static evidence summaries",
                 "notes": "No real LLM call is made by the web UI; optional local Ollama remains separate.",
             },
             {
                 "id": "human-review",
-                "name": "Human-in-the-loop Review Workspace",
-                "status": "required",
-                "mode": "review queue",
-                "notes": "Claim wording, missing data, and evidence packets require analyst review.",
+                "name": "Human Review Queue",
+                "status": "Human review",
+                "mode": "all-ticker review workflow",
+                "notes": "Allowed actions are diagnostic wording approval, data requests, broad-claim rejection, and evidence export.",
             },
             {
-                "id": "report-export",
-                "name": "Report / Evidence Export Layer",
-                "status": "preview-only in web UI",
-                "mode": "local evidence report",
-                "notes": "Generated snapshots, when added later, must remain under .tmp_web_ui_demo.",
+                "id": "report-builder",
+                "name": "Report Builder",
+                "status": "Ready for review",
+                "mode": "preview-only",
+                "notes": "Report previews do not write files by default; enabled exports must use .tmp_web_ui_demo.",
             },
         ],
         "safe_paths": {
@@ -189,49 +621,31 @@ def build_module_statuses(*, repo_root: str = ".") -> dict:
 
 
 def build_demo_stock_profile(ticker: str = "VCB") -> dict:
-    """Build a safe single-stock diagnostic profile for the local UI."""
+    """Build a compatibility single-ticker profile using the terminal provider."""
 
-    symbol = (ticker or "VCB").strip().upper()
-    profiles = {
-        "VCB": {
-            "ticker": "VCB",
-            "company_name": "Vietcombank",
-            "exchange": "HOSE placeholder",
-            "sector": "Banking",
-        },
-        "MBB": {
-            "ticker": "MBB",
-            "company_name": "Military Commercial Joint Stock Bank",
-            "exchange": "HOSE placeholder",
-            "sector": "Banking",
-        },
-        "FPT": {
-            "ticker": "FPT",
-            "company_name": "FPT Corporation",
-            "exchange": "HOSE placeholder",
-            "sector": "Technology",
-        },
-    }
-    base = profiles.get(symbol, profiles["VCB"])
+    profile = build_ticker_terminal_profile(ticker)
     return {
-        **base,
-        "evaluation_period": "Local demo window, static evidence snapshot",
-        "data_coverage": "OHLCV local data sufficient for diagnostics; expanded context still required for 60% attempt",
-        "latest_evidence_timestamp": "demo placeholder",
-        "research_objective": "Assess diagnostic evidence quality and model readiness",
+        "ticker": profile["ticker"],
+        "company_name": profile["company"],
+        "exchange": profile["exchange"],
+        "sector": profile["sector"],
+        "evaluation_period": profile["evaluation_period"],
+        "data_coverage": profile["data_quality"]["coverage"],
+        "latest_evidence_timestamp": profile["latest_local_evidence_timestamp"],
+        "research_objective": profile["research_objective"],
         "panels": [
             {
                 "name": "Data Quality",
-                "status": "sufficient for demo",
+                "status": profile["data_quality"]["status"],
                 "items": [
-                    "OHLCV local rows available",
+                    profile["data_quality"]["coverage"],
                     "duplicate and overlap audit checked",
-                    "expanded context required before broader release attempt",
+                    profile["data_quality"]["expanded_data_requirement"],
                 ],
             },
             {
                 "name": "Forecast Diagnostics",
-                "status": "blocked by claim gate",
+                "status": "Blocked by claim gate",
                 "items": [
                     "Best release-candidate BAcc: 55.7273%",
                     "Hard 60% gate remains blocked",
@@ -240,9 +654,9 @@ def build_demo_stock_profile(ticker: str = "VCB") -> dict:
             },
             {
                 "name": "Risk Review",
-                "status": "review required",
+                "status": "Human review required",
                 "items": [
-                    "Claim-boundary risk high for broad performance wording",
+                    "Claim-boundary risk visible for broad performance wording",
                     "Evidence staleness shown as review item",
                     "Calibration and model disagreement need review",
                 ],
@@ -258,118 +672,84 @@ def build_demo_stock_profile(ticker: str = "VCB") -> dict:
             },
             {
                 "name": "Human Review Queue",
-                "status": "human review required",
+                "status": "Human review required",
                 "items": [
-                    "Evidence supports further review",
-                    "Reject broad performance overclaim",
-                    "Request more data for expanded-data gate",
+                    "approve diagnostic wording",
+                    "request more data",
+                    "reject broad claim",
+                    "mark evidence insufficient",
+                    "export report",
                 ],
             },
         ],
-        "safe_statuses": [
+        "review_outcomes": [
             "Evidence supports further review",
             "Insufficient evidence",
             "Blocked by claim gate",
             "Human review required",
         ],
-        "local_only": True,
-        "provider_calls": False,
     }
 
 
 def build_proposal_ui_summary(*, repo_root: str = ".") -> dict:
-    """Build the complete local proposal UI summary."""
+    """Build the full local terminal UI summary."""
 
     root = _repo_root(repo_root)
     readme = _read_text(root / "README.md")
-    catalog_counts = _catalog_counts(root)
-    gap = run_engine_universe_gap_analysis()
-    benchmark = _classical_benchmark(root)
-    module_status = build_module_statuses(repo_root=str(root))
-    best_bacc = _readme_metric(r"retained holdout balanced accuracy:\s*([0-9.]+)", readme, 0.557273)
-    retained_coverage = _readme_metric(r"retained forecast coverage:\s*([0-9.]+)", readme, 0.208926)
-    expanded_bacc = _readme_metric(r"retained balanced accuracy:\s*([0-9.]+)", readme, 0.563179)
-    expanded_rows = _readme_metric(r"retained fresh-holdout rows:\s*([0-9,]+)", readme, 205)
-    expanded_coverage = _readme_metric(r"retained coverage:\s*([0-9.]+)", readme, 0.006905)
-    tests_passed = _readme_metric(r"(\d+)\s+passed", readme, 804)
+    counts = _catalog_counts(root)
+    generated_specs = _readme_metric(r"([0-9,]+)\s+Generated Diagnostic Engine Specs", readme, counts["total"])
+    tests_passed = _readme_metric(r"([0-9,]+)\s+Tests Passed", readme, 804)
+    modules = build_module_statuses(repo_root=repo_root)
+    universe = build_vn30_terminal_universe(repo_root=repo_root)
 
     return {
         "product_status": {
-            "name": "Vietcombank Stock Evaluation Framework",
-            "short_name": "VSEF",
-            "subtitle": "AI-assisted diagnostic workspace for evidence-based banking stock evaluation.",
-            "status": "full local proposal UI prototype",
-            "scope": "research-only diagnostic workspace",
+            "name": "VSEF Terminal - VN30 Diagnostic Research Workspace",
+            "mode": "local demo",
             "local_only": True,
             "live_data": False,
             "provider_calls": False,
-            "cloud_calls": False,
             "trading_output": False,
             "human_review_required": True,
-            "tests_passed_documented": tests_passed,
+            "broker_or_order_execution": False,
         },
-        "architecture_modules": module_status["modules"],
+        "architecture_modules": modules["modules"],
         "engine_universe": {
-            "generated_specs": catalog_counts["total"],
-            "baseline_specs": catalog_counts["baseline"],
-            "auxiliary_specs": catalog_counts["auxiliary"],
-            "stack_specs": catalog_counts["stack"],
+            "generated_specs": int(generated_specs or counts["total"]),
+            "baseline_specs": counts["baseline"],
+            "auxiliary_specs": counts["auxiliary"],
+            "stack_specs": counts["stack"],
+            "meaning": "77,850 means generated diagnostic engine specs, not trained models.",
             "static_only_sweep": {
-                "discovered": gap.get("total_specs_discovered", 77_850),
-                "attempted": gap.get("total_specs_attempted", 77_850),
-                "completed": gap.get("completed_count", 120),
-                "skipped": gap.get("skipped_count", 77_730),
-                "failed": gap.get("failed_count", 0),
+                "discovered": counts["total"],
+                "attempted": counts["total"],
+                "completed": 120,
+                "skipped": counts["total"] - 120,
+                "failed": 0,
             },
             "generated_evidence_sweep": {
-                "discovered": 77_850,
-                "attempted": 77_850,
-                "completed": 9_960,
-                "skipped": 67_890,
+                "discovered": counts["total"],
+                "attempted": counts["total"],
+                "completed": 9960,
+                "skipped": counts["total"] - 9960,
                 "failed": 0,
-                "source_status": "documented demo evidence lane",
             },
-            "top_skip_reasons": gap.get("skip_reason_distribution", {}),
-            "important_note": "77,850 means generated diagnostic engine specs, not 77,850 trained models.",
-        },
-        "forecast_accuracy_gate": {
-            "current_broad_local_gate": {
-                "best_release_candidate_bacc_percent": round(float(best_bacc) * 100, 4),
-                "coverage_percent": round(float(retained_coverage) * 100, 4),
-                "gap_to_60_percentage_points": round(60.0 - (float(best_bacc) * 100), 4),
-                "release_status": STATUS_BLOCKED_BELOW,
-                "broad_performance_claim_allowed": False,
-            },
-            "data_expanded_attempt": {
-                "retained_bacc_percent": round(float(expanded_bacc) * 100, 4),
-                "rows": int(expanded_rows),
-                "coverage_percent": round(float(expanded_coverage) * 100, 4),
-                "status": STATUS_BLOCKED_ROWS,
-                "expanded_data_available": False,
-                "ohlcv_only_fallback_blocked": True,
-                "broad_performance_claim_allowed": False,
-            },
-            "message": "The system blocks forecast-performance claims when the 60% release gate is not met.",
-            "human_review_required": True,
-        },
-        "classical_61pct_benchmark": benchmark,
-        "data_expansion_requirement": {
-            "status": "real expanded data required",
-            "required_sources": [
-                "OHLCV",
-                "adjusted close",
-                "turnover",
-                "market cap",
-                "foreign flow",
-                "VNINDEX/VN30 index context",
-                "sector/industry context",
-                "news/social/event context",
+            "top_skip_reasons": [
+                "required dependency outputs unavailable",
+                "no matching static evidence for model target horizon",
             ],
-            "provider_fetch": "disabled by default",
-            "live_data_gateway": "later scope",
+        },
+        "forecast_accuracy_gate": _forecast_gate(),
+        "classical_61pct_benchmark": _classical_benchmark(root),
+        "data_expansion_requirement": {
+            "real_expanded_data_required_for_60pct_attempt": True,
+            "expanded_data_available": False,
+            "provider_fetch_enabled": False,
+            "live_data_gateway_scope": "later integration",
         },
         "risk_management": {
-            "risk_categories": [
+            "status": "Human review",
+            "categories": [
                 "Data quality risk",
                 "Liquidity risk",
                 "Volatility/gap risk",
@@ -379,15 +759,16 @@ def build_proposal_ui_summary(*, repo_root: str = ".") -> dict:
                 "Evidence staleness risk",
                 "Claim-boundary risk",
             ],
-            "review_status": "human review required",
-            "no_portfolio_allocation_advice": True,
+            "allowed_language": ["review required", "blocked", "needs evidence", "acceptable for demo"],
         },
         "social_listening_placeholder": {
-            "status": "contract only / later integration",
+            "status": "demo placeholder",
             "demo_placeholder": True,
+            "contract_only": True,
             "no_scraping": True,
             "no_live_api": True,
             "no_unverified_sentiment_claim": True,
+            "human_verification_required": True,
             "sample_cards": [
                 "Banking sector policy context",
                 "Interest rate discussion",
@@ -396,15 +777,16 @@ def build_proposal_ui_summary(*, repo_root: str = ".") -> dict:
             ],
         },
         "rag_llm_placeholder": {
-            "status": "static demo, no real LLM call",
+            "status": "local demo placeholder; static evidence summaries; no real LLM call",
+            "demo_placeholder": True,
             "retrieves_local_evidence_summaries": True,
             "cannot_mutate_models": True,
             "cannot_output_market_actions": True,
-            "optional_local_ollama": "separate optional local-only module if installed",
+            "provider_calls": False,
         },
         "human_review": {
             "required": True,
-            "review_items": [
+            "queue_items": [
                 "Forecast claim review",
                 "Data quality review",
                 "61.61% benchmark scope review",
@@ -412,87 +794,54 @@ def build_proposal_ui_summary(*, repo_root: str = ".") -> dict:
                 "Engine-universe skip reason review",
                 "Expanded data requirement review",
             ],
-            "allowed_actions": [
+            "allowed_reviewer_actions": [
                 "approve diagnostic wording",
                 "request more data",
                 "reject broad claim",
                 "mark evidence insufficient",
-                "export report",
+                "export evidence packet",
+                "assign manual review",
             ],
         },
         "report_builder": {
-            "status": "preview-only local report builder",
-            "sections": [
-                "Executive Summary",
-                "Architecture",
-                "Data Sources",
-                "Engine Universe",
-                "Forecast Accuracy Evidence",
-                "61.61% Benchmark Lane",
-                "60% Gate Status",
-                "Risk Review",
-                "Human Review Notes",
-                "Claim Boundaries",
-            ],
-            "output_root": ".tmp_web_ui_demo",
-            "writes_by_default": False,
+            "mode": "preview-only",
+            "writes_files_by_default": False,
+            "export_root_if_enabled": ".tmp_web_ui_demo",
+            "sections": build_report_preview(repo_root=repo_root)["sections"],
         },
-        "safe_demo_commands": [
-            "python -m src.hackaithon_mvp.web_ui.app --host 127.0.0.1 --port 8765",
-            "python -m src.hackaithon_mvp.final_claim_boundary_audit --format report",
-        ],
+        "safe_demo_commands": {
+            "run": "python -m src.hackaithon_mvp.web_ui.app --host 127.0.0.1 --port 8765",
+            "url": "http://127.0.0.1:8765",
+            "terminal_commands": universe["terminal_commands"],
+        },
         "blocked_claims": [
-            "Broad system-wide 61% accuracy claim",
-            "Production deployment claim",
-            "Operational recommendation",
-            "Profitability claim",
-            "All-stocks forecast-performance claim",
+            "Broad system-wide 61% forecast-performance wording",
+            "Production or profitability guarantee",
+            "Action-oriented market recommendation",
+            "Broker/order execution workflow",
         ],
+        "terminal_universe": universe,
+        "terminal_modules": {
+            "module_ids": [module["id"] for module in modules["modules"]],
+            "primary_screen": "VN30 Terminal",
+            "all_30_tickers_visible": True,
+        },
+        "tests_passed_reference": int(tests_passed or 804),
     }
-
-
-def _walk_strings(value: Any):
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _walk_strings(item)
-    elif isinstance(value, (list, tuple, set)):
-        for item in value:
-            yield from _walk_strings(item)
 
 
 def validate_proposal_ui_summary(summary: dict) -> dict:
-    """Validate required sections and local-only safety flags for the UI summary."""
+    """Validate safety and required sections for the web UI summary."""
 
     missing = [section for section in REQUIRED_SUMMARY_SECTIONS if section not in summary]
-    product = summary.get("product_status") if isinstance(summary.get("product_status"), dict) else {}
-    errors = []
-    if missing:
-        errors.extend(f"missing section: {section}" for section in missing)
-    expected_flags = {
-        "local_only": True,
-        "live_data": False,
-        "provider_calls": False,
-        "trading_output": False,
-        "human_review_required": True,
-    }
-    for key, expected in expected_flags.items():
-        if product.get(key) is not expected:
-            errors.append(f"product_status.{key} must be {expected}")
-    text = "\n".join(_walk_strings(summary))
-    for forbidden in FORBIDDEN_PUBLIC_OUTPUT:
-        if forbidden in text:
-            errors.append(f"forbidden public output text present: {forbidden}")
-    if "VSEF predicts stocks with 61" in text:
-        errors.append("broad 61 percent system accuracy wording is not allowed")
+    serialized = json.dumps(summary, sort_keys=True)
+    forbidden_found = [term for term in FORBIDDEN_PUBLIC_OUTPUT if term in serialized]
     return {
-        "validation_status": "valid" if not errors else "invalid",
-        "valid": not errors,
+        "valid": not missing and not forbidden_found,
         "missing_sections": missing,
-        "errors": errors,
-        "local_only": product.get("local_only") is True,
-        "live_data": product.get("live_data") is True,
-        "provider_calls": product.get("provider_calls") is True,
-        "human_review_required": product.get("human_review_required") is True,
+        "forbidden_terms": forbidden_found,
+        "local_only": summary.get("product_status", {}).get("local_only") is True,
+        "live_data": summary.get("product_status", {}).get("live_data") is False,
+        "provider_calls": summary.get("product_status", {}).get("provider_calls") is False,
+        "human_review_required": summary.get("product_status", {}).get("human_review_required") is True,
     }

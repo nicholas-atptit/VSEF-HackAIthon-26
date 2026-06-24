@@ -3,340 +3,375 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Vietcombank Stock Evaluation Framework</title>
+    <title>VSEF Terminal - VN30 Diagnostic Research Workspace</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">V</div>
-        <div>
-          <strong>VSEF</strong>
-          <span>Research Workspace</span>
+    <div class="terminal-shell">
+      <header class="top-bar">
+        <div class="brand-block">
+          <span class="terminal-mark">VSEF TERMINAL</span>
+          <strong>VN30 Diagnostic Research Workspace</strong>
+          <span class="subtitle">Evidence-based stock evaluation terminal for VN30 banking/equity research review.</span>
         </div>
-      </div>
-      <nav id="nav">
-        <button class="active" data-target="overview">Overview</button>
-        <button data-target="dashboard">Executive Dashboard</button>
-        <button data-target="workspace">Stock Workspace</button>
-        <button data-target="data-platform">Data Platform</button>
-        <button data-target="engine-universe">Engine Universe</button>
-        <button data-target="forecast-gate">60% Gate</button>
-        <button data-target="benchmark-61">61.61% Lane</button>
-        <button data-target="risk">Risk Engine</button>
-        <button data-target="social">Market Context</button>
-        <button data-target="backtesting">Evaluation</button>
-        <button data-target="rag">RAG + LLM</button>
-        <button data-target="review">Human Review</button>
-        <button data-target="report">Report Builder</button>
-      </nav>
-      <div class="sidebar-footer">
-        <span class="dot safe"></span>
-        Local demo mode
-      </div>
-    </aside>
-
-    <main class="app">
-      <header class="topbar">
-        <div>
-          <span class="eyebrow">Proposal-level local prototype</span>
-          <h1>Vietcombank Stock Evaluation Framework</h1>
-        </div>
-        <div class="view-toggle" aria-label="View mode">
-          <button class="active" id="proposal-view">Proposal View</button>
-          <button id="technical-view">Technical Evidence View</button>
+        <form class="command-form" id="command-form">
+          <label class="sr-only" for="command-input">Search ticker or enter command</label>
+          <input
+            id="command-input"
+            class="command-input"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search or command: VCB, VCB DIAG, VCB RISK, VCB EVID, VN30, GATE, CLAIMS, HELP"
+          />
+          <button type="submit">Run</button>
+        </form>
+        <div class="status-cluster">
+          <span class="status-pill status-safe">LOCAL</span>
+          <span class="status-pill status-warn">NO LIVE DATA</span>
+          <span class="status-pill status-blocked">60% GATE BLOCKED</span>
         </div>
       </header>
 
-      <section class="page active hero" id="overview">
-        <div class="hero-copy">
-          <span class="eyebrow">VSEF local-only demo</span>
-          <h2>Vietcombank Stock Evaluation Framework</h2>
-          <p>AI-assisted diagnostic workspace for evidence-based banking stock evaluation.</p>
-          <div class="hero-actions">
-            <button data-target="workspace" class="nav-cta">Open Evaluation Workspace</button>
-            <button data-target="engine-universe" class="nav-cta secondary">View Engine Universe</button>
-            <button data-target="forecast-gate" class="nav-cta secondary">View Claim Boundaries</button>
-            <button data-target="report" class="nav-cta secondary">Generate Review Report</button>
-          </div>
-        </div>
-        <div class="hero-grid">
-          <article><strong>Research-only</strong><span>Evidence organization and review</span></article>
-          <article><strong>Diagnostic-only</strong><span>No operational authority</span></article>
-          <article><strong>Baseline/classical ML</strong><span>Transparent model evidence</span></article>
-          <article><strong>Human review required</strong><span>Analyst sign-off lane</span></article>
-          <article><strong>Local demo mode</strong><span>No cloud or provider calls</span></article>
-          <article><strong>No live market actions</strong><span>Review artifacts only</span></article>
-        </div>
-      </section>
+      <main class="terminal-layout">
+        <aside class="module-rail" aria-label="Terminal modules">
+          <button class="rail-button active" data-module="vn30">VN30 Terminal</button>
+          <button class="rail-button" data-module="workspace">Ticker Workspace</button>
+          <button class="rail-button" data-module="engine">Engine Matrix</button>
+          <button class="rail-button" data-module="gate">Forecast Gate</button>
+          <button class="rail-button" data-module="benchmark">61.61% Benchmark</button>
+          <button class="rail-button" data-module="risk">Risk Monitor</button>
+          <button class="rail-button" data-module="context">Market Context</button>
+          <button class="rail-button" data-module="assistant">RAG / Evidence Assistant</button>
+          <button class="rail-button" data-module="review">Human Review Queue</button>
+          <button class="rail-button" data-module="report">Report Builder</button>
+        </aside>
 
-      <section class="page" id="dashboard">
-        <div class="section-heading">
-          <span class="eyebrow">Executive Dashboard</span>
-          <h2>Proposal Evidence Snapshot</h2>
-        </div>
-        <div class="kpi-grid">
-          <div class="kpi"><span>77,850</span><p>Generated Diagnostic Engine Specs</p></div>
-          <div class="kpi"><span>0</span><p>Failed Specs in Exhaustive Sweep</p></div>
-          <div class="kpi"><span>804</span><p>Tests Passed</p></div>
-          <div class="kpi"><span>61.61%</span><p>Bounded Classical Benchmark</p></div>
-          <div class="kpi blocked"><span>60% Gate</span><p>Current Broad Forecast Release Blocked</p></div>
-          <div class="kpi warning"><span>Human Review</span><p>Required</p></div>
-        </div>
-        <div class="status-strip">
-          <span><strong>Diagnostic/Governance MVP:</strong> Ready for demo</span>
-          <span><strong>Forecast performance release:</strong> Blocked until real expanded data exists</span>
-          <span><strong>Data Gateway:</strong> Later scope</span>
-          <span><strong>Provider calls:</strong> Disabled</span>
-          <span><strong>Report mode:</strong> Local evidence only</span>
-        </div>
-      </section>
+        <section class="center-stack">
+          <section class="hero-terminal" data-view="vn30">
+            <div>
+              <p class="eyebrow">VSEF Terminal</p>
+              <h1>VSEF Terminal &mdash; VN30 Diagnostic Research Workspace</h1>
+              <p>Evidence-based stock evaluation terminal for VN30 banking/equity research review.</p>
+            </div>
+            <div class="hero-flags">
+              <span>Research-only</span>
+              <span>Local demo</span>
+              <span>No provider calls</span>
+              <span>Human review</span>
+            </div>
+          </section>
 
-      <section class="page" id="workspace">
-        <div class="section-heading row">
-          <div>
-            <span class="eyebrow">Analyst Workspace</span>
-            <h2 id="stock-title">VCB - Vietcombank</h2>
-          </div>
-          <label class="select-label">
-            Demo ticker
-            <select id="ticker-select">
-              <option value="VCB">VCB</option>
-              <option value="MBB">MBB</option>
-              <option value="FPT">FPT</option>
-            </select>
-          </label>
-        </div>
-        <div class="stock-header">
-          <div><span>Ticker</span><strong id="stock-ticker">VCB</strong></div>
-          <div><span>Company</span><strong id="stock-company">Vietcombank</strong></div>
-          <div><span>Exchange</span><strong id="stock-exchange">HOSE placeholder</strong></div>
-          <div><span>Objective</span><strong>Assess diagnostic evidence quality and model readiness</strong></div>
-        </div>
-        <div class="panel-grid" id="stock-panels"></div>
-      </section>
+          <section class="kpi-strip" aria-label="Core evidence metrics">
+            <article>
+              <span>Engine Specs</span>
+              <strong>77,850</strong>
+              <em>generated diagnostic specs</em>
+            </article>
+            <article>
+              <span>Failed Specs</span>
+              <strong>0</strong>
+              <em>exhaustive sweep</em>
+            </article>
+            <article>
+              <span>Tests Passed</span>
+              <strong>804</strong>
+              <em>proposal evidence</em>
+            </article>
+            <article>
+              <span>Benchmark</span>
+              <strong>61.61%</strong>
+              <em>exact-scope only</em>
+            </article>
+            <article class="blocked-card">
+              <span>Hard Gate</span>
+              <strong>60%</strong>
+              <em>forecast_release_blocked_below_60pct</em>
+            </article>
+          </section>
 
-      <section class="page" id="data-platform">
-        <div class="section-heading">
-          <span class="eyebrow">Data Platform</span>
-          <h2>Local Evidence and Future Gateway Contract</h2>
-        </div>
-        <div class="architecture-flow">
-          <span>Raw Local Files</span><span>Schema Validation</span><span>Feature Builder</span><span>Forecast Rows</span><span>Evidence Store</span><span>Review UI</span>
-        </div>
-        <div class="panel-grid">
-          <article class="panel"><h3>Local OHLCV Store</h3><p>Available for local diagnostic workflows.</p><span class="badge safe">available</span></article>
-          <article class="panel"><h3>Optional Expanded Data Contract</h3><p>Required for a new 60% attempt with real context groups.</p><span class="badge warning">required</span></article>
-          <article class="panel"><h3>Offline Data Gateway</h3><p>Local-file ingestion only; no live provider fetch.</p><span class="badge safe">local only</span></article>
-          <article class="panel"><h3>Local Evidence Store</h3><p>Read-only summaries for RAG-style explanation.</p><span class="badge safe">evidence only</span></article>
-          <article class="panel"><h3>Future Data Gateway</h3><p>Later scope, contract visible.</p><span class="badge muted">later scope</span></article>
-        </div>
-        <div class="data-source-grid" id="data-sources"></div>
-      </section>
+          <section class="panel-grid primary-grid" data-view="vn30 workspace">
+            <article class="panel universe-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">VN30 Universe</p>
+                  <h2>All 30 Tickers</h2>
+                </div>
+                <input id="ticker-filter" class="mini-input" placeholder="Filter ticker..." />
+              </div>
+              <div class="distribution" id="distribution-row"></div>
+              <div class="ticker-grid" id="ticker-grid" aria-live="polite"></div>
+            </article>
 
-      <section class="page" id="engine-universe">
-        <div class="section-heading">
-          <span class="eyebrow">Diagnostic Engine Universe</span>
-          <h2>77,850 Generated Specs With Safe Skip Behavior</h2>
-        </div>
-        <div class="notice">77,850 means generated diagnostic engine specs, not 77,850 trained models.</div>
-        <div class="split">
-          <div class="panel">
-            <h3>Static-only sweep</h3>
-            <table>
-              <tr><td>Discovered</td><td>77,850</td></tr>
-              <tr><td>Attempted</td><td>77,850</td></tr>
-              <tr><td>Completed</td><td>120</td></tr>
-              <tr><td>Skipped</td><td>77,730</td></tr>
-              <tr><td>Failed</td><td>0</td></tr>
-            </table>
-          </div>
-          <div class="panel">
-            <h3>Generated-evidence sweep</h3>
-            <table>
-              <tr><td>Discovered</td><td>77,850</td></tr>
-              <tr><td>Attempted</td><td>77,850</td></tr>
-              <tr><td>Completed</td><td>9,960</td></tr>
-              <tr><td>Skipped</td><td>67,890</td></tr>
-              <tr><td>Failed</td><td>0</td></tr>
-            </table>
-          </div>
-        </div>
-        <div class="chart-grid">
-          <div class="bar-chart" data-title="Completed vs Skipped vs Failed"></div>
-          <div class="bar-chart families" data-title="Baseline / Auxiliary / Stack Specs"></div>
-          <div class="panel">
-            <h3>Top skip reasons</h3>
-            <ul>
-              <li>required dependency outputs unavailable</li>
-              <li>no matching static evidence for model target horizon</li>
-            </ul>
-          </div>
-        </div>
-      </section>
+            <article class="panel workspace-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Selected Ticker Workspace</p>
+                  <h2 id="selected-title">VCB - Vietcombank</h2>
+                </div>
+                <span id="selected-review" class="status-pill status-warn">Human review</span>
+              </div>
+              <div class="ticker-tabs" id="ticker-tabs"></div>
+              <div class="workspace-body" id="workspace-body"></div>
+            </article>
+          </section>
 
-      <section class="page" id="forecast-gate">
-        <div class="section-heading">
-          <span class="eyebrow">Forecast Accuracy & 60% Gate</span>
-          <h2>Hard Gate Blocks Unsupported Forecast Claims</h2>
-        </div>
-        <p class="message">The system blocks forecast-performance claims when the 60% release gate is not met.</p>
-        <div class="kpi-grid">
-          <div class="kpi"><span>55.7273%</span><p>Best release-candidate BAcc</p></div>
-          <div class="kpi"><span>20.8926%</span><p>Coverage</p></div>
-          <div class="kpi warning"><span>4.2727 pp</span><p>Gap to 60%</p></div>
-          <div class="kpi blocked"><span>forecast_release_blocked_below_60pct</span><p>Current release status</p></div>
-        </div>
-        <div class="kpi-grid compact">
-          <div class="kpi"><span>56.3179%</span><p>Retained BAcc</p></div>
-          <div class="kpi"><span>205</span><p>Rows</p></div>
-          <div class="kpi"><span>0.6905%</span><p>Coverage</p></div>
-          <div class="kpi blocked"><span>forecast_release_blocked_insufficient_rows</span><p>Expanded-data attempt</p></div>
-          <div class="kpi warning"><span>false</span><p>Expanded data available</p></div>
-          <div class="kpi warning"><span>true</span><p>OHLCV-only fallback blocked</p></div>
-        </div>
-        <button class="secondary modal-button" data-modal="gate-modal">Why is the 60% gate blocked?</button>
-      </section>
+          <section class="module-view hidden" data-view="engine">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Engine Matrix</p>
+                  <h2>77,850 Generated Diagnostic Engine Specs</h2>
+                </div>
+                <span class="status-pill status-safe">0 failed specs</span>
+              </div>
+              <div class="matrix-grid">
+                <div><span>Baseline specs</span><strong>32,850</strong></div>
+                <div><span>Auxiliary specs</span><strong>22,500</strong></div>
+                <div><span>Stack specs</span><strong>22,500</strong></div>
+                <div><span>Static-only completed</span><strong>120</strong></div>
+                <div><span>Generated-evidence completed</span><strong>9,960</strong></div>
+                <div><span>Generated-evidence skipped</span><strong>67,890</strong></div>
+              </div>
+              <div class="split-panels">
+                <div>
+                  <h3>Static-only Sweep</h3>
+                  <table>
+                    <tbody>
+                      <tr><th>Discovered</th><td>77,850</td></tr>
+                      <tr><th>Attempted</th><td>77,850</td></tr>
+                      <tr><th>Completed</th><td>120</td></tr>
+                      <tr><th>Skipped</th><td>77,730</td></tr>
+                      <tr><th>Failed</th><td>0</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <h3>Skip Reason Heatmap</h3>
+                  <div class="heat-row"><span>required dependency outputs unavailable</span><b style="width: 92%"></b></div>
+                  <div class="heat-row"><span>no matching static evidence for model target horizon</span><b style="width: 74%"></b></div>
+                  <div class="heat-row"><span>per-ticker readiness placeholder</span><b style="width: 48%"></b></div>
+                  <p class="callout">77,850 means generated diagnostic engine specs, not trained models.</p>
+                </div>
+              </div>
+            </article>
+          </section>
 
-      <section class="page" id="benchmark-61">
-        <div class="section-heading">
-          <span class="eyebrow">Exact-scope evidence</span>
-          <h2>Classical 61.61% Benchmark Lane</h2>
+          <section class="module-view hidden" data-view="gate">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Forecast Gate</p>
+                  <h2>Hard 60% Release Gate</h2>
+                </div>
+                <span class="status-pill status-blocked">Gate blocked</span>
+              </div>
+              <div class="matrix-grid">
+                <div><span>Best release-candidate BAcc</span><strong>55.7273%</strong></div>
+                <div><span>Coverage</span><strong>20.8926%</strong></div>
+                <div><span>Gap to 60%</span><strong>4.2727 pp</strong></div>
+                <div><span>Release status</span><strong>forecast_release_blocked_below_60pct</strong></div>
+                <div><span>Data-expanded BAcc</span><strong>56.3179%</strong></div>
+                <div><span>Expanded rows</span><strong>205</strong></div>
+              </div>
+              <p class="callout blocked">The system blocks forecast-performance claims when the 60% release gate is not met.</p>
+              <p class="muted">Data-expanded status: forecast_release_blocked_insufficient_rows. Real expanded data is required before another release attempt.</p>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="benchmark">
+            <article class="panel benchmark-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Classical 61.61% Benchmark</p>
+                  <h2>Benchmark Scope Locked</h2>
+                </div>
+                <span class="status-pill status-safe">exact-scope only</span>
+              </div>
+              <div class="benchmark-grid">
+                <span>Universe<b>VN30 hourly</b></span>
+                <span>Target<b>absolute_direction</b></span>
+                <span>Model<b>L2 Logistic</b></span>
+                <span>Feature set<b>feature_set_C_closest</b></span>
+                <span>Horizon<b>h40</b></span>
+                <span>Rows<b>4,074</b></span>
+                <span>Final accuracy<b>61.61%</b></span>
+                <span>Lift<b>+10.90 pp</b></span>
+              </div>
+              <p class="callout safe">Within a bounded VN30 hourly absolute-direction benchmark, the classical L2 Logistic champion reached 61.61% final accuracy over 4,074 rows.</p>
+              <p class="callout warning">BENCHMARK SCOPE LOCKED &mdash; NOT A BROAD SYSTEM-WIDE FORECAST CLAIM</p>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="risk">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Risk Monitor</p>
+                  <h2>Cross-Ticker Review Table</h2>
+                </div>
+                <span class="status-pill status-warn">Human review</span>
+              </div>
+              <div class="table-wrap">
+                <table id="risk-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Data quality</th>
+                      <th>Liquidity</th>
+                      <th>Volatility/gap</th>
+                      <th>Model disagreement</th>
+                      <th>Calibration</th>
+                      <th>Leakage/overlap</th>
+                      <th>Staleness</th>
+                      <th>Claim boundary</th>
+                      <th>Review priority</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="context">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Market Context</p>
+                  <h2>Proposal Module Placeholders</h2>
+                </div>
+                <span class="status-pill status-warn">demo placeholder</span>
+              </div>
+              <div class="context-grid">
+                <div><b>News/event context</b><span>demo placeholder</span><em>no live scraping</em></div>
+                <div><b>Social sentiment</b><span>demo placeholder</span><em>no live provider call</em></div>
+                <div><b>Market narrative</b><span>demo placeholder</span><em>human verification required</em></div>
+                <div><b>Sector context</b><span>demo placeholder</span><em>source coverage placeholder</em></div>
+              </div>
+              <div class="context-tags">
+                <span>Banking sector policy context</span>
+                <span>Interest rate discussion</span>
+                <span>Credit growth narrative</span>
+                <span>Market liquidity conditions</span>
+              </div>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="assistant">
+            <article class="panel assistant-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">RAG / Evidence Assistant</p>
+                  <h2>Evidence-grounded Research Assistant</h2>
+                </div>
+                <span class="status-pill status-safe">local demo</span>
+              </div>
+              <div class="chat-panel">
+                <div class="assistant-message">
+                  <b>Assistant</b>
+                  <p>I retrieve local evidence summaries, cannot mutate models, and cannot output market actions.</p>
+                </div>
+                <div class="suggestion-row">
+                  <button data-prompt="Why is the 60% gate blocked?">Why is the 60% gate blocked?</button>
+                  <button data-prompt="Explain 61.61% benchmark scope.">Explain 61.61% benchmark scope.</button>
+                  <button data-prompt="Show VN30 engine coverage.">Show VN30 engine coverage.</button>
+                  <button data-prompt="What evidence is missing for VCB?">What evidence is missing for VCB?</button>
+                  <button data-prompt="What should human reviewer check?">What should human reviewer check?</button>
+                </div>
+                <label class="sr-only" for="assistant-input">Ask about local evidence</label>
+                <input id="assistant-input" class="command-input" placeholder="Ask about model evidence, risk flags, or claim boundaries..." />
+              </div>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="review">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Human Review Queue</p>
+                  <h2>All-Ticker Evidence Workflow</h2>
+                </div>
+                <span class="status-pill status-warn">review required</span>
+              </div>
+              <div class="review-grid" id="review-grid"></div>
+            </article>
+          </section>
+
+          <section class="module-view hidden" data-view="report">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Report Builder</p>
+                  <h2>Local Evidence Report Preview</h2>
+                </div>
+                <button id="preview-report">Preview Evidence Report</button>
+              </div>
+              <div class="button-row">
+                <button id="copy-pitch">Copy Pitch-Safe Claim Text</button>
+                <button id="copy-claims">Copy Blocked-Claim Warnings</button>
+                <button id="explain-benchmark">Explain 61.61% Scope</button>
+                <button id="explain-gate">Explain 60% Gate</button>
+              </div>
+              <div id="report-preview" class="report-preview"></div>
+            </article>
+          </section>
+        </section>
+
+        <aside class="right-panel" aria-label="Evidence and claim boundary panel">
+          <article class="panel compact">
+            <p class="eyebrow">Right Evidence Panel</p>
+            <h2>Claim / Gate / RAG</h2>
+            <div class="claim-card blocked">
+              <span>60% hard gate</span>
+              <strong>forecast_release_blocked_below_60pct</strong>
+              <em>Broad forecast-performance wording is blocked.</em>
+            </div>
+            <div class="claim-card safe">
+              <span>61.61% benchmark</span>
+              <strong>exact-scope only</strong>
+              <em>VN30 hourly, absolute_direction, L2 Logistic, h40, 4,074 rows.</em>
+            </div>
+            <div class="claim-card warning">
+              <span>Provider status</span>
+              <strong>Disabled</strong>
+              <em>Local demo; no live API; no cloud call.</em>
+            </div>
+            <div class="claim-boundaries">
+              <button class="accordion">Claim Boundaries</button>
+              <div class="accordion-body">
+                <p>Blocked: broad system-wide 61% forecast-performance wording.</p>
+                <p>Blocked: production or profitability guarantee.</p>
+                <p>Blocked: broker/order execution workflow.</p>
+              </div>
+            </div>
+          </article>
+        </aside>
+      </main>
+
+      <footer class="console-panel">
+        <div>
+          <span class="console-label">CONSOLE</span>
+          <pre id="console-output">READY &gt; local-only VN30 terminal loaded. Type HELP for supported research commands.</pre>
         </div>
-        <div class="benchmark-card">
-          <span class="badge safe">exact-scope only</span>
-          <span class="badge warning">Not a broad system-wide forecast claim</span>
-          <p id="safe-claim">Within a bounded VN30 hourly absolute-direction benchmark, the classical L2 Logistic champion reached 61.61% final accuracy over 4,074 rows.</p>
-          <div class="field-grid">
-            <div><span>Universe</span><strong>VN30 hourly</strong></div>
-            <div><span>Target</span><strong>absolute_direction</strong></div>
-            <div><span>Model</span><strong>L2 Logistic</strong></div>
-            <div><span>Feature set</span><strong>feature_set_C_closest</strong></div>
-            <div><span>Horizon</span><strong>h40</strong></div>
-            <div><span>Rows</span><strong>4,074</strong></div>
-            <div><span>Final accuracy</span><strong>61.61%</strong></div>
-            <div><span>Lift</span><strong>+10.90 percentage points</strong></div>
-          </div>
-          <div class="button-row">
-            <button id="copy-safe-claim">Copy pitch-safe claim text</button>
-            <button class="secondary modal-button" data-modal="benchmark-modal">Explain exact scope</button>
-          </div>
-        </div>
-        <details class="claim-boundaries">
-          <summary>Claim boundaries</summary>
-          <ul>
-            <li>Not a broad system-wide accuracy claim.</li>
-            <li>Not a platform deployment claim.</li>
-            <li>Not market-action guidance.</li>
-            <li>Not a profitability claim.</li>
+        <div>
+          <span class="console-label">AUDIT LOG</span>
+          <ul id="audit-log">
+            <li>local health flags loaded</li>
+            <li>provider calls disabled</li>
+            <li>human review required</li>
           </ul>
-          <button class="secondary" id="copy-blocked-warnings">Copy blocked-claim warnings</button>
-        </details>
-      </section>
-
-      <section class="page" id="risk">
-        <div class="section-heading">
-          <span class="eyebrow">Risk Management Engine</span>
-          <h2>Diagnostic Risk Governance</h2>
         </div>
-        <div class="risk-grid" id="risk-grid"></div>
-      </section>
-
-      <section class="page" id="social">
-        <div class="section-heading">
-          <span class="eyebrow">Social Listening / Market Context</span>
-          <h2>Contract-only Placeholder</h2>
-        </div>
-        <div class="notice warning">Social listening is contract only / later integration. No scraping, no live API, no unverified sentiment claim.</div>
-        <div class="panel-grid" id="social-cards"></div>
-      </section>
-
-      <section class="page" id="backtesting">
-        <div class="section-heading">
-          <span class="eyebrow">Backtesting / Evaluation</span>
-          <h2>The framework evaluates models and blocks unsupported forecast claims.</h2>
-        </div>
-        <div class="table-panel">
-          <table>
-            <thead><tr><th>Layer</th><th>Evidence</th><th>Status</th><th>Review Note</th></tr></thead>
-            <tbody id="evaluation-rows"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="page" id="rag">
-        <div class="section-heading">
-          <span class="eyebrow">RAG + LLM Explanation Layer</span>
-          <h2>Evidence-grounded Research Assistant</h2>
-        </div>
-        <div class="chat-panel">
-          <div class="suggestions">
-            <button>Why is the 60% gate blocked?</button>
-            <button>What does the 61.61% benchmark mean?</button>
-            <button>Which engine specs were skipped?</button>
-            <button>What evidence is missing?</button>
-            <button>What does human review need to check?</button>
-          </div>
-          <div class="assistant-output">
-            <strong>Static demo assistant</strong>
-            <p>It retrieves local evidence summaries, cannot mutate models, cannot make market recommendations, and cannot output market-action instructions.</p>
-            <p>Optional local Ollama status: separate local-only experiment, not called by this web UI.</p>
-          </div>
-          <input aria-label="Assistant question" placeholder="Ask about model evidence, risk flags, or claim boundaries..." />
-        </div>
-      </section>
-
-      <section class="page" id="review">
-        <div class="section-heading">
-          <span class="eyebrow">Human-in-the-loop Review Workspace</span>
-          <h2>Review Queue</h2>
-        </div>
-        <div class="review-grid" id="review-grid"></div>
-      </section>
-
-      <section class="page" id="report">
-        <div class="section-heading">
-          <span class="eyebrow">Report / Evidence Export Layer</span>
-          <h2>Final Report Preview</h2>
-        </div>
-        <div class="report-preview">
-          <ol>
-            <li>Executive Summary</li>
-            <li>Architecture</li>
-            <li>Data Sources</li>
-            <li>Engine Universe</li>
-            <li>Forecast Accuracy Evidence</li>
-            <li>61.61% Benchmark Lane</li>
-            <li>60% Gate Status</li>
-            <li>Risk Review</li>
-            <li>Human Review Notes</li>
-            <li>Claim Boundaries</li>
-          </ol>
-        </div>
-        <div class="button-row">
-          <button>Preview Evidence Report</button>
-          <button class="secondary" id="export-json">Export Demo JSON</button>
-          <button class="secondary" id="copy-pitch">Copy Pitch Summary</button>
-        </div>
-        <p class="muted-text">JSON export is client-side in this prototype. Server-generated snapshots, when added, must stay under .tmp_web_ui_demo.</p>
-      </section>
-    </main>
-
-    <div class="modal" id="benchmark-modal" aria-hidden="true">
-      <div class="modal-card">
-        <button class="modal-close" aria-label="Close">x</button>
-        <h3>61.61% Exact Scope</h3>
-        <p>This benchmark is bounded to VN30 hourly absolute-direction evidence, L2 Logistic, feature_set_C_closest, h40, and 4,074 rows. It is not a broad platform-wide accuracy claim.</p>
-      </div>
+      </footer>
     </div>
-    <div class="modal" id="gate-modal" aria-hidden="true">
+
+    <dialog id="info-modal">
       <div class="modal-card">
-        <button class="modal-close" aria-label="Close">x</button>
-        <h3>60% Gate Blocked</h3>
-        <p>The current broad/local candidate remains below 60% BAcc, while the expanded-data attempt has too few retained rows and real expanded data is not available. The gate blocks forecast-performance claims.</p>
+        <button class="modal-close" aria-label="Close modal">&times;</button>
+        <h2 id="modal-title">Evidence note</h2>
+        <p id="modal-body"></p>
       </div>
-    </div>
-    <div class="toast" id="toast" role="status"></div>
+    </dialog>
+
     <script src="/static/mock_data.js"></script>
     <script src="/static/app.js"></script>
   </body>

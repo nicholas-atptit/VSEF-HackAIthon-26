@@ -618,9 +618,9 @@ Latest local result:
 824 passed
 ```
 
-## Full Local Web UI Prototype
+## VN30 Terminal-Style Local Web UI Prototype
 
-The MVP now includes a full local web UI prototype for proposal review. It runs as a localhost-only Python app and shows the full evidence workspace across data platform, diagnostic engine universe, risk governance, market-context placeholder, read-only explanation placeholder, human review, and report preview layers.
+The MVP now includes a local terminal-style institutional research workspace for the full 30-ticker VN30 demo universe. It runs as a localhost-only Python app and opens on a dense VN30 terminal screen with ticker search, command input, per-ticker diagnostic drilldown, engine matrix, risk monitor, market-context placeholder, read-only evidence assistant placeholder, human review queue, and report builder.
 
 Run command:
 
@@ -640,13 +640,19 @@ Scope and boundaries:
 - no live data
 - no provider API calls
 - no cloud calls
+- no broker/order/execution workflow
 - no action-oriented output
+- no action labels
 - no production readiness claim
 - no profitability guarantee
+- shows all 30 VN30 demo ticker cards
+- ticker command examples: `VCB`, `VCB DIAG`, `VCB RISK`, `VCB EVID`, `VN30`, `GATE`, `CLAIMS`, and `HELP`
+- shows per-ticker evidence drilldown across data, diagnostics, risk, backtest, evidence, review, and report tabs
+- shows the engine matrix and cross-ticker risk monitor
 - shows the 77,850 generated diagnostic engine-spec universe
 - shows the hard 60% gate blocked status
 - shows the bounded 61.61% classical benchmark lane as exact-scope evidence only
-- shows the human-review workflow
+- shows the human-review queue and report preview workflow
 - generated snapshots remain untracked and must stay under `.tmp_web_ui_demo`
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
