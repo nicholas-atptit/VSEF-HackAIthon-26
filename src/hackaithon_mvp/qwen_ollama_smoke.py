@@ -83,6 +83,26 @@ def _build_smoke_records() -> tuple[dict, ...]:
     return (*diagnostic_records, _engine_universe_summary_record(), _limitation_record())
 
 
+def _public_experiment(experiment: dict) -> dict:
+    """Return public smoke payload without raw restricted safety phrases."""
+
+    if not isinstance(experiment, dict):
+        return {}
+    output = dict(experiment)
+    if output.get("llm_called"):
+        output["answer"] = "Local evidence summary generated; human review required."
+    safety = output.get("answer_safety")
+    if isinstance(safety, dict):
+        output["answer_safety"] = {
+            "is_allowed": safety.get("is_allowed"),
+            "safety_classification": safety.get("safety_classification"),
+            "blocked_term_count": len(safety.get("blocked_terms") or ()),
+            "allowed_boundary_term_count": len(safety.get("allowed_boundary_terms") or ()),
+            "warning_count": len(safety.get("warnings") or ()),
+        }
+    return output
+
+
 def run_qwen_ollama_smoke(
     *,
     model: str = DEFAULT_OLLAMA_MODEL,
@@ -116,7 +136,7 @@ def run_qwen_ollama_smoke(
             "temp_store_removed": False,
             "store_root_mode": "temporary_system_path" if created_temp else "caller_provided_path",
             "write_status": (write_result or {}).get("write_status") if write_result else "not_written",
-            "experiment": experiment,
+            "experiment": _public_experiment(experiment),
             "human_review_required": True,
             "read_only": True,
             "claim_boundary": {

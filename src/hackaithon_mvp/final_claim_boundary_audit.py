@@ -22,6 +22,9 @@ CLAIM_BOUNDARY = {
     "human_review_required": True,
 }
 NON_CLAIM_TEXT = "Final public claim-boundary audit; human review remains required."
+ALLOWED_CLASSICAL_61PCT_STATEMENT = (
+    "VN30 hourly absolute-direction classical champion reached 61.61% final accuracy over 4,074 rows."
+)
 _ACTION_A = "".join(("b", "uy"))
 _ACTION_B = "".join(("se", "ll"))
 _ACTION_C = "".join(("ho", "ld"))
@@ -30,6 +33,16 @@ FORBIDDEN_PUBLIC_PATTERNS = (
     ("corporate_attribution", re.compile(r"\b(?:vsef|vietcombank|viettel)\b", re.IGNORECASE)),
     ("relationship_claim", re.compile(r"\b(?:sponsor|sponsorship|funding|partnership|endorsement|client relationship)\b", re.IGNORECASE)),
     ("readiness_overclaim", re.compile(r"\bproduction[-\s]+ready\b|\bprofit\s+guarantee\b|\bguaranteed\s+profit", re.IGNORECASE)),
+    (
+        "broad_61pct_forecast_claim",
+        re.compile(
+            r"\bvsef\s+forecasts\s+stocks\s+with\s+61%?\s+accuracy\b|"
+            r"\bour\s+system\s+is\s+over\s+60%?\s+accurate\b|"
+            r"\bproduction\s+forecast\s+accuracy\s+is\s+61%?\b|"
+            r"\btrading\s+signal\s+accuracy\s+is\s+61%?\b",
+            re.IGNORECASE,
+        ),
+    ),
     ("forbidden_predictions_count", re.compile(r"\b77,?850\s+predictions\b", re.IGNORECASE)),
     ("fine_tuned_model_claim", re.compile(r"\bfine[-\s]+tuned\s+model\b", re.IGNORECASE)),
 )
@@ -48,18 +61,43 @@ CLI_MODULES = (
     "src.hackaithon_mvp.llm_demo_evidence_pack",
     "src.hackaithon_mvp.overnight_self_improvement",
 )
+BROAD_61PCT_BLOCK_EXAMPLES = (
+    "VSEF forecasts stocks with 61% accuracy",
+    "our system is over 60% accurate",
+    "production forecast accuracy is 61%",
+    "trading signal accuracy is 61%",
+)
+
+
+def _strip_allowed_negated_action_contexts(text: str) -> str:
+    cleaned = text
+    allowed_patterns = (
+        r"\bnot\s+buy/sell/hold\b",
+        r"\bno\s+buy/sell/hold\b",
+        r"\bblocked wording:\s*\"?buy/sell/hold\"?",
+    )
+    for pattern in allowed_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+    return cleaned
 
 
 def _audit_text(name: str, text: str) -> dict[str, Any]:
     hits = []
     for category, pattern in FORBIDDEN_PUBLIC_PATTERNS:
-        if pattern.search(text):
+        scan_text = _strip_allowed_negated_action_contexts(text) if category == "action_label" else text
+        if pattern.search(scan_text):
             hits.append(category)
     return {
         "name": name,
         "is_safe": not hits,
         "forbidden_categories": sorted(set(hits)),
     }
+
+
+def audit_public_claim_text(text: str, *, name: str = "claim_text") -> dict[str, Any]:
+    """Audit an individual public claim statement for unsupported broad wording."""
+
+    return _audit_text(name, text)
 
 
 def _readme_text(readme_path: str) -> str:
@@ -85,6 +123,14 @@ def run_final_claim_boundary_audit(*, readme_path: str = "README.md") -> dict:
         errors.append("Ollama experiment must be described as local")
     if "fine-tune" in lowered and "control plane" not in lowered and "readiness" not in lowered:
         errors.append("Fine-tune language must be bounded to control plane or readiness")
+    exact_scope_audit = audit_public_claim_text(ALLOWED_CLASSICAL_61PCT_STATEMENT, name="allowed_classical_61pct")
+    broad_61pct_audits = [audit_public_claim_text(example, name="blocked_broad_61pct") for example in BROAD_61PCT_BLOCK_EXAMPLES]
+    exact_scope_allowed = exact_scope_audit["is_safe"]
+    broad_61pct_blocked = all(not item["is_safe"] for item in broad_61pct_audits)
+    if not exact_scope_allowed:
+        errors.append("Exact-scope classical 61.61% statement should be allowed")
+    if not broad_61pct_blocked:
+        errors.append("Broad 61% forecast statements should be blocked")
 
     cli_audits = [
         {
@@ -112,7 +158,11 @@ def run_final_claim_boundary_audit(*, readme_path: str = "README.md") -> dict:
             "offline_gateway_local_file_only": "local-file only" in lowered or "local files only" in lowered,
             "ollama_local_only_optional": "ollama" in lowered and "local" in lowered,
             "human_review_required": "human review" in lowered,
+            "classical_61pct_exact_scope_statement_allowed": exact_scope_allowed,
+            "broad_61pct_forecast_claims_blocked": broad_61pct_blocked,
         },
+        "allowed_classical_61pct_statement": ALLOWED_CLASSICAL_61PCT_STATEMENT,
+        "broad_61pct_block_examples": BROAD_61PCT_BLOCK_EXAMPLES,
         "errors": errors,
         "claim_boundary": dict(CLAIM_BOUNDARY),
         "non_claim": NON_CLAIM_TEXT,

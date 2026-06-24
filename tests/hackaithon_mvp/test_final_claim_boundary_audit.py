@@ -2,6 +2,9 @@ import subprocess
 import sys
 
 from src.hackaithon_mvp.final_claim_boundary_audit import (
+    ALLOWED_CLASSICAL_61PCT_STATEMENT,
+    BROAD_61PCT_BLOCK_EXAMPLES,
+    audit_public_claim_text,
     render_final_claim_boundary_report,
     run_final_claim_boundary_audit,
 )
@@ -49,6 +52,27 @@ def test_final_claim_boundary_audit_blocks_forbidden_public_claims(tmp_path):
     assert result["audit_status"] == "claim_boundary_attention_required"
     assert result["is_safe"] is False
     assert result["errors"]
+
+
+def test_final_claim_boundary_allows_exact_scope_classical_61pct_statement():
+    result = audit_public_claim_text(ALLOWED_CLASSICAL_61PCT_STATEMENT)
+
+    assert result["is_safe"] is True
+    assert result["forbidden_categories"] == []
+
+
+def test_final_claim_boundary_blocks_broad_61pct_claims():
+    for statement in BROAD_61PCT_BLOCK_EXAMPLES:
+        result = audit_public_claim_text(statement)
+
+        assert result["is_safe"] is False
+        assert "broad_61pct_forecast_claim" in result["forbidden_categories"] or "corporate_attribution" in result["forbidden_categories"]
+
+
+def test_final_claim_boundary_allows_negated_action_label_context():
+    result = audit_public_claim_text("This result is not BUY/SELL/HOLD.")
+
+    assert result["is_safe"] is True
 
 
 def test_final_claim_boundary_report_renders_status(tmp_path):

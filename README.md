@@ -128,6 +128,7 @@ Current scope:
 | 60% Forecast Edge Search | Implemented | Runs focused clean local search with validation-only confidence gating and returns blocked release status when no honest 60% final holdout result is found |
 | Data-Expanded 60% Forecast Attempt | Implemented | Validates expanded local data schema, keeps provider fetch disabled by default, builds expanded non-leaky features, narrows target slices, and enforces the hard 60% gate |
 | Real Expanded Data Requirement | Implemented | Blocks new data-expanded 60% attempts unless a local expanded panel has OHLCV plus at least two additional context groups |
+| Classical 61.61% Benchmark Lane | Implemented | Registers the existing exact-scope VN30 hourly absolute-direction L2 Logistic h40 evidence as bounded classical forecast evidence |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -395,6 +396,47 @@ python -m src.hackaithon_mvp.forecast_60pct_release_gate --format report
 python -m src.hackaithon_mvp.forecast_60pct_edge_search --output-root .tmp_60pct_gate --max-models 300 --max-workers 1 --min-slice-rows 300 --format report
 ```
 
+## Classical 61.61% Benchmark Lane
+
+This is the strongest bounded classical benchmark evidence retained for submission. It is source-backed by `reports/results/VN30_FULL_MODEL_TUNING_V3_RESULT_SUMMARY.md` and cross-checked against the archived model-universe audit/claim-boundary artifacts.
+
+Exact scope:
+
+- universe: VN30 hourly
+- target: `absolute_direction`
+- model: L2 Logistic
+- feature set: `feature_set_C_closest`
+- horizon: h40
+- rows: 4,074
+- final accuracy: 61.61%
+- audit exact accuracy context: 0.6163475699558174
+- lift: +10.90 percentage points
+
+Allowed exact-scope wording:
+
+```text
+Within a bounded VN30 hourly absolute-direction benchmark, the classical L2 Logistic champion reached 61.61% final accuracy over 4,074 rows.
+```
+
+Claim boundary:
+
+- claim allowed only in this exact scope
+- separate from later local fallback hard-gate runs
+- not a broad whole-MVP forecast-performance claim
+- not operational performance
+- not production readiness
+- not action labels
+- not excluded-scope evidence
+
+The later local fallback and forecast-edge runs did not reach the hard 60% release gate. Real expanded data is still required for any new broad 60% release attempt.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.classical_61pct_benchmark_registry --format report
+python -m src.hackaithon_mvp.classical_61pct_claim_card --format report
+```
+
 ## Data-Expanded 60% Forecast Attempt
 
 The data-expanded 60% attempt adds a stricter local data contract, an optional provider adapter that remains disabled by default, expanded non-leaky feature construction, narrow ticker/horizon target selection, validation-only confidence gating, and the same hard 60% final holdout release gate.
@@ -573,8 +615,39 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Latest local result:
 
 ```text
-804 passed
+824 passed
 ```
+
+## Full Local Web UI Prototype
+
+The MVP now includes a full local web UI prototype for proposal review. It runs as a localhost-only Python app and shows the full evidence workspace across data platform, diagnostic engine universe, risk governance, market-context placeholder, read-only explanation placeholder, human review, and report preview layers.
+
+Run command:
+
+```powershell
+python -m src.hackaithon_mvp.web_ui.app --host 127.0.0.1 --port 8765
+```
+
+Local URL:
+
+```text
+http://127.0.0.1:8765
+```
+
+Scope and boundaries:
+
+- local-only UI
+- no live data
+- no provider API calls
+- no cloud calls
+- no action-oriented output
+- no production readiness claim
+- no profitability guarantee
+- shows the 77,850 generated diagnostic engine-spec universe
+- shows the hard 60% gate blocked status
+- shows the bounded 61.61% classical benchmark lane as exact-scope evidence only
+- shows the human-review workflow
+- generated snapshots remain untracked and must stay under `.tmp_web_ui_demo`
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
 
