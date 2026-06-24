@@ -126,6 +126,7 @@ Current scope:
 | Forecast Edge Orchestrator | Implemented | Runs planning, optional disabled expansion, clean targets, rich features, bounded training, strict selection, retained evidence, and coverage-aware reporting |
 | 60% Forecast Release Gate | Implemented | Blocks forecast-performance release below 60% final holdout or retained-holdout accuracy/balanced accuracy with row, coverage, baseline, MCC, and data-quality checks |
 | 60% Forecast Edge Search | Implemented | Runs focused clean local search with validation-only confidence gating and returns blocked release status when no honest 60% final holdout result is found |
+| Data-Expanded 60% Forecast Attempt | Implemented | Validates expanded local data schema, keeps provider fetch disabled by default, builds expanded non-leaky features, narrows target slices, and enforces the hard 60% gate |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -393,6 +394,49 @@ python -m src.hackaithon_mvp.forecast_60pct_release_gate --format report
 python -m src.hackaithon_mvp.forecast_60pct_edge_search --output-root .tmp_60pct_gate --max-models 300 --max-workers 1 --min-slice-rows 300 --format report
 ```
 
+## Data-Expanded 60% Forecast Attempt
+
+The data-expanded 60% attempt adds a stricter local data contract, an optional provider adapter that remains disabled by default, expanded non-leaky feature construction, narrow ticker/horizon target selection, validation-only confidence gating, and the same hard 60% final holdout release gate.
+
+Latest local run (`.tmp_data_expanded_60pct`, no provider fetch, `--min-slice-rows 500` plus diagnostic fallback `--min-slice-rows 300`):
+
+- expanded data available: no
+- provider fetch used: no
+- data source: existing local OHLCV
+- tickers in local panel: 35
+- clean target rows: 114,385
+- clean rows by horizon: h1 88,012; h5 17,585; h10 8,788
+- feature blocks: returns, market_context, sector_context, risk_liquidity, technical, calendar
+- feature columns generated: 23
+- selected target slices: 69
+- exploratory target slices: 35
+- rejected target slices: 1
+- model groups attempted/trained/tuned: 35 / 34 / 34
+- retained fresh-holdout rows: 205
+- retained coverage: 0.006905
+- retained accuracy: 0.565854
+- retained balanced accuracy: 0.563179
+- retained MCC: 0.127953
+- retained baselines: random 0.500000; majority 0.517073; previous-direction 0.500000
+- best model slice: BID h1 gradient_boosting, balanced accuracy 0.569411 over 480 rows
+- best small slice observed by the hard-gate audit: BVH h1 gradient_boosting, balanced accuracy 0.789473 over 24 rows; this is below the meaningful row threshold
+- global 60% gate passed: no
+- selective 60% gate passed: no
+- slice-only 60% gate passed: no
+- final forecast release status: `forecast_release_blocked_insufficient_rows`
+- broad performance claim allowed: no
+- exact gap to 60% on retained balanced accuracy: 0.034146
+
+Current local data remains insufficient for an honest >=60% forecast claim.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.data_expanded_forecast_contract --input path\to\expanded_price_panel.csv --format report
+python -m src.hackaithon_mvp.optional_vn_market_data_adapter --output-root .tmp_data_expanded_60pct\data --format report
+python -m src.hackaithon_mvp.data_expanded_60pct_forecaster --output-root .tmp_data_expanded_60pct --max-models 300 --max-workers 1 --min-slice-rows 500 --format report
+```
+
 ## Forecast Edge Pipeline
 
 The forecast edge sprint adds a cleaner target protocol and richer local feature set before any slice is allowed to emit diagnostic forecast rows. It prioritizes h1/h5/h10/h20, builds non-overlapping targets, adds market-context, liquidity, technical, and cross-sectional features, trains bounded local model groups with validation-only selection, and keeps strict holdout gates for retained slices.
@@ -493,7 +537,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Latest local result:
 
 ```text
-787 passed
+799 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
