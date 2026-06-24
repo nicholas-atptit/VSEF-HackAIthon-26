@@ -33,6 +33,33 @@ CLAIM_BOUNDARY = {
 NON_CLAIM_TEXT = "Local Ollama LLM readiness check; optional evidence experiment only."
 
 
+def _public_experiment(experiment: dict) -> dict[str, Any]:
+    if not isinstance(experiment, dict):
+        return {}
+    output = dict(experiment)
+    if output.get("llm_called"):
+        output["answer"] = "Local evidence summary generated; human review required."
+    safety = output.get("answer_safety")
+    if isinstance(safety, dict):
+        output["answer_safety"] = {
+            "is_allowed": safety.get("is_allowed"),
+            "safety_classification": safety.get("safety_classification"),
+            "blocked_term_count": len(safety.get("blocked_terms") or ()),
+            "allowed_boundary_term_count": len(safety.get("allowed_boundary_terms") or ()),
+            "warning_count": len(safety.get("warnings") or ()),
+        }
+    return output
+
+
+def _public_smoke_result(smoke_result: dict) -> dict[str, Any]:
+    if not isinstance(smoke_result, dict):
+        return {}
+    output = dict(smoke_result)
+    if isinstance(output.get("experiment"), dict):
+        output["experiment"] = _public_experiment(output["experiment"])
+    return output
+
+
 def _check(name: str, passed: bool, detail: str = "") -> dict[str, Any]:
     return {"name": name, "passed": bool(passed), "detail": detail}
 
@@ -67,19 +94,21 @@ def run_ollama_llm_readiness_gate(
         )
     )
 
-    smoke_result = run_qwen_ollama_smoke(model=model)
+    raw_smoke_result = run_qwen_ollama_smoke(model=model)
+    raw_experiment = raw_smoke_result.get("experiment", {}) if isinstance(raw_smoke_result.get("experiment"), dict) else {}
+    smoke_result = _public_smoke_result(raw_smoke_result)
     experiment = smoke_result.get("experiment", {}) if isinstance(smoke_result.get("experiment"), dict) else {}
     checks.append(
         _check(
             "temporary_evidence_store_experiment_builds",
-            bool(experiment) and smoke_result.get("created_temp_store") is True,
-            str(smoke_result.get("smoke_status")),
+            bool(raw_experiment) and raw_smoke_result.get("created_temp_store") is True,
+            str(raw_smoke_result.get("smoke_status")),
         )
     )
     checks.append(
         _check(
             "temporary_store_removed",
-            smoke_result.get("created_temp_store") is True,
+            raw_smoke_result.get("created_temp_store") is True,
             "internal temp store is removed before return",
         )
     )
@@ -98,16 +127,16 @@ def run_ollama_llm_readiness_gate(
         checks.append(
             _check(
                 "bounded_answer_run_works_when_model_available",
-                experiment.get("experiment_status") in {"completed", "blocked_by_output_validation"},
-                str(experiment.get("experiment_status")),
+                raw_experiment.get("experiment_status") in {"completed", "blocked_by_output_validation"},
+                str(raw_experiment.get("experiment_status")),
             )
         )
     else:
         checks.append(
             _check(
                 "unavailable_model_or_runtime_is_non_blocking",
-                experiment.get("experiment_status") in {"ollama_unavailable", "model_unavailable"},
-                str(experiment.get("experiment_status")),
+                raw_experiment.get("experiment_status") in {"ollama_unavailable", "model_unavailable"},
+                str(raw_experiment.get("experiment_status")),
             )
         )
 

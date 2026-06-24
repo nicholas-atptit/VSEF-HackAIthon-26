@@ -148,7 +148,9 @@ def run_engine_universe_with_generated_evidence(
         "non_claim": NON_CLAIM_TEXT,
         "human_review_required": True,
     }
-    (out_root / "engine_universe_generated_evidence_summary.json").write_text(
+    summary_path = out_root / "engine_universe_generated_evidence_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
         json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n",
         encoding="utf-8",
     )
