@@ -9,6 +9,11 @@ from typing import Any
 
 from src.hackaithon_mvp.forecast_60pct_release_gate import STATUS_BLOCKED_BELOW, STATUS_BLOCKED_ROWS
 from src.hackaithon_mvp.social_listening_contract import get_social_listening_contract
+from src.hackaithon_mvp.web_ui.forecast_chart_provider import (
+    build_forecast_chart_coverage_summary,
+    build_forecast_chart_data,
+    build_horizon_comparison_chart,
+)
 
 
 REQUIRED_SUMMARY_SECTIONS = (
@@ -262,7 +267,23 @@ def build_vn30_terminal_universe(*, repo_root: str = ".") -> dict:
         "cards": cards,
         "sector_distribution": sector_counts,
         "status_distribution": status_distribution,
-        "terminal_commands": ["VCB", "VCB DIAG", "VCB RISK", "VCB EVID", "VN30", "GATE", "CLAIMS", "HELP"],
+        "terminal_commands": [
+            "VCB",
+            "VCB DIAG",
+            "VCB RISK",
+            "VCB EVID",
+            "VCB CHART",
+            "VCB H1 CHART",
+            "VCB H5 CHART",
+            "VCB H10 CHART",
+            "VCB BACKTEST",
+            "VCB FORECAST",
+            "VN30",
+            "GATE",
+            "CLAIMS",
+            "CHART HELP",
+            "HELP",
+        ],
         "safe_paths": {
             "repo_root_exists": root.exists(),
             "generated_demo_snapshots": ".tmp_web_ui_demo",
@@ -280,6 +301,8 @@ def build_ticker_terminal_profile(ticker: str, *, repo_root: str = ".") -> dict:
     counts = _catalog_counts(root)
     gate = _forecast_gate()
     benchmark = _classical_benchmark(root)
+    chart = build_forecast_chart_data(symbol, repo_root=str(root))
+    horizon_comparison = build_horizon_comparison_chart(symbol, repo_root=str(root))
     review_items = [
         {
             "issue": "Forecast claim review",
@@ -356,11 +379,22 @@ def build_ticker_terminal_profile(ticker: str, *, repo_root: str = ".") -> dict:
         },
         "gate_status": gate,
         "benchmark_scope": benchmark,
+        "forecast_chart_status": {
+            "available": bool(chart.get("available")),
+            "reason": chart.get("reason"),
+            "source_artifact": chart.get("source_artifact"),
+            "horizon": chart.get("horizon"),
+            "metrics": chart.get("metrics"),
+            "unavailable_label": "Forecast chart unavailable — evidence missing",
+            "boundary": chart.get("boundary"),
+        },
+        "horizon_comparison": horizon_comparison,
         "review_queue_items": review_items,
         "report_sections": [
             "Executive Summary",
             "VN30 Universe Evidence",
             "Ticker Diagnostic Summary",
+            "Forecast Chart Evidence",
             "Engine Universe",
             "Forecast Gate Status",
             "61.61% Exact-Scope Benchmark",
@@ -389,16 +423,20 @@ def build_terminal_command_response(command: str, *, repo_root: str = ".") -> di
     tokens = text.split()
     ticker_symbols = {symbol for symbol, _, _ in VN30_DEMO_UNIVERSE}
 
-    if text == "HELP":
+    if text in {"HELP", "CHART HELP"}:
         return {
             "command": text,
             "command_status": "completed",
-            "title": "Supported terminal commands",
+            "title": "Supported terminal commands" if text == "HELP" else "Forecast chart commands",
             "lines": [
                 "Ticker: VCB",
                 "Ticker diagnostics: VCB DIAG",
                 "Ticker risk: VCB RISK",
                 "Ticker evidence: VCB EVID",
+                "Ticker chart: VCB CHART",
+                "Ticker horizon chart: VCB H1 CHART, VCB H5 CHART, VCB H10 CHART",
+                "Ticker backtest: VCB BACKTEST",
+                "Ticker forecast evidence: VCB FORECAST",
                 "Universe: VN30",
                 "Gate status: GATE",
                 "Claim boundaries: CLAIMS",
@@ -460,6 +498,10 @@ def build_terminal_command_response(command: str, *, repo_root: str = ".") -> di
     if tokens[0] in ticker_symbols:
         profile = build_ticker_terminal_profile(tokens[0], repo_root=repo_root)
         mode = tokens[1] if len(tokens) > 1 else "OVERVIEW"
+        horizon = None
+        if len(tokens) >= 2 and tokens[1].startswith("H") and tokens[1][1:].isdigit():
+            horizon = tokens[1].lower()
+            mode = tokens[2] if len(tokens) > 2 else "CHART"
         if mode == "DIAG":
             lines = [
                 f"{profile['ticker']} diagnostics: {profile['forecast_diagnostic_summary']['release_status']}.",
@@ -478,18 +520,32 @@ def build_terminal_command_response(command: str, *, repo_root: str = ".") -> di
                 f"Engine specs linked: {profile['engine_evidence_summary']['generated_specs']:,}.",
                 "Evidence packet remains local and read-only in this demo.",
             ]
+        elif mode in {"CHART", "FORECAST", "BACKTEST"}:
+            chart_payload = build_forecast_chart_data(profile["ticker"], horizon=horizon, repo_root=repo_root)
+            if chart_payload.get("available"):
+                lines = [
+                    f"{profile['ticker']} forecast chart evidence is available for {chart_payload.get('horizon')}.",
+                    f"Rows: {chart_payload['metrics']['rows']}; source: {chart_payload['source_artifact']}.",
+                    "Local forecast-vs-actual rows only. Human review required.",
+                ]
+            else:
+                lines = [
+                    "Forecast chart unavailable — evidence missing",
+                    f"Reason: {chart_payload.get('reason')}.",
+                    "No row-level forecast timeline is fabricated.",
+                ]
         else:
             lines = [
                 f"{profile['ticker']} - {profile['company']} ({profile['sector']}).",
                 f"Review status: {profile['review_status']}.",
-                "Use DIAG, RISK, or EVID for focused drilldown.",
+                "Use DIAG, RISK, EVID, CHART, BACKTEST, or FORECAST for focused drilldown.",
             ]
         return {
             "command": text,
             "command_status": "completed",
             "title": f"{profile['ticker']} terminal response",
             "lines": lines,
-            "payload": {"ticker": profile["ticker"], "mode": mode},
+            "payload": {"ticker": profile["ticker"], "mode": mode, "horizon": horizon},
             "local_only": True,
             "provider_calls": False,
         }
@@ -510,6 +566,24 @@ def build_report_preview(ticker: str = "VCB", *, repo_root: str = ".") -> dict:
     scope = (ticker or "VCB").strip().upper()
     profile = build_ticker_terminal_profile("VCB" if scope == "VN30" else scope, repo_root=repo_root)
     universe = build_vn30_terminal_universe(repo_root=repo_root)
+    if scope == "VN30":
+        chart_summary = build_forecast_chart_coverage_summary((card["ticker"] for card in universe["cards"]), repo_root=repo_root)
+        chart_section_status = (
+            f"{chart_summary['tickers_with_row_level_chart_evidence']} tickers with row-level chart evidence; "
+            f"{chart_summary['tickers_missing_chart_evidence']} missing"
+        )
+    else:
+        chart_payload = build_forecast_chart_data(profile["ticker"], repo_root=repo_root)
+        comparison = build_horizon_comparison_chart(profile["ticker"], repo_root=repo_root)
+        chart_summary = {
+            "forecast_chart_status": "available" if chart_payload.get("available") else "Forecast chart unavailable — evidence missing",
+            "available_horizons": comparison["available_horizons"],
+            "source_artifact": chart_payload.get("source_artifact"),
+            "metrics": chart_payload.get("metrics"),
+            "warning": None if chart_payload.get("available") else chart_payload.get("reason"),
+            "no_action_output": True,
+        }
+        chart_section_status = chart_summary["forecast_chart_status"]
     return {
         "scope": scope,
         "selected_ticker": profile["ticker"] if scope != "VN30" else None,
@@ -518,10 +592,12 @@ def build_report_preview(ticker: str = "VCB", *, repo_root: str = ".") -> dict:
         "export_root_if_enabled": ".tmp_web_ui_demo",
         "local_only": True,
         "provider_calls": False,
+        "forecast_chart_summary": chart_summary,
         "sections": [
             {"title": "Executive Summary", "status": "preview"},
             {"title": "VN30 Universe", "status": f"{universe['ticker_count']} ticker cards"},
             {"title": "Selected Ticker", "status": profile["review_status"] if scope != "VN30" else "all VN30"},
+            {"title": "Forecast Chart Evidence", "status": chart_section_status},
             {"title": "Engine Universe", "status": "77,850 generated diagnostic engine specs"},
             {"title": "Forecast Gate", "status": STATUS_BLOCKED_BELOW},
             {"title": "61.61% Benchmark", "status": "exact-scope only"},

@@ -22,4 +22,10 @@ window.VSEF_TERMINAL_STATIC_FALLBACK = {
     no_real_llm_call: true,
     read_only: true,
   },
+  forecast_charts: {
+    status: "local artifact-backed when row evidence exists",
+    unavailable_reason: "row_level_forecast_evidence_missing",
+    no_generated_rows: true,
+    panels: ["ForecastChartPanel", "AccuracyTimelinePanel", "HorizonComparisonPanel", "ForecastChartUnavailablePanel"],
+  },
 };

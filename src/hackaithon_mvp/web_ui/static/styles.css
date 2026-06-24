@@ -442,6 +442,161 @@ em {
   gap: 10px;
 }
 
+.chart-components-anchor {
+  display: none;
+}
+
+.chart-stack,
+.forecast-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.forecast-panel {
+  border: 1px solid var(--line);
+  background: #0a1723;
+  padding: 10px;
+}
+
+.forecast-panel h3 {
+  margin-bottom: 0;
+}
+
+.chart-subtitle {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.chart-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.forecast-svg {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  border: 1px solid var(--line-soft);
+  background: #06111b;
+}
+
+.compact-chart {
+  min-height: 116px;
+}
+
+.axis-line {
+  fill: none;
+  stroke: rgba(159, 181, 197, 0.45);
+  stroke-width: 1;
+}
+
+.price-line {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+
+.accuracy-line {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2;
+}
+
+.marker-correct {
+  fill: var(--green);
+}
+
+.marker-incorrect {
+  fill: var(--red);
+}
+
+.marker-missing {
+  fill: var(--amber);
+}
+
+.hitmiss-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4px, 1fr));
+  gap: 2px;
+  min-height: 64px;
+  border: 1px solid var(--line-soft);
+  background: #06111b;
+  padding: 8px;
+  align-items: stretch;
+}
+
+.hitmiss-strip span {
+  display: block;
+  min-height: 48px;
+  border-radius: 2px;
+}
+
+.hitmiss-strip .correct,
+.dot.correct {
+  background: var(--green);
+}
+
+.hitmiss-strip .incorrect,
+.dot.incorrect {
+  background: var(--red);
+}
+
+.hitmiss-strip .missing,
+.dot.missing {
+  background: var(--amber);
+}
+
+.legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.legend-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.horizon-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.horizon-row {
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1fr) minmax(220px, 1.5fr) 96px;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.horizon-row b,
+.horizon-row strong {
+  color: var(--text);
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+}
+
+.horizon-track {
+  height: 9px;
+  border: 1px solid var(--line-soft);
+  background: #06111b;
+}
+
+.horizon-track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--amber), var(--green));
+}
+
 .workspace-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

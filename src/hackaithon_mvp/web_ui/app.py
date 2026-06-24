@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.hackaithon_mvp.web_ui.data_provider import (
+    VN30_DEMO_UNIVERSE,
     build_demo_stock_profile,
     build_module_statuses,
     build_proposal_ui_summary,
@@ -19,11 +20,18 @@ from src.hackaithon_mvp.web_ui.data_provider import (
     build_ticker_terminal_profile,
     build_vn30_terminal_universe,
 )
+from src.hackaithon_mvp.web_ui.forecast_chart_provider import (
+    build_forecast_accuracy_timeline,
+    build_forecast_chart_data,
+    build_horizon_comparison_chart,
+    discover_forecast_chart_artifacts,
+)
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = PACKAGE_DIR / "static"
 REPO_ROOT = Path(__file__).resolve().parents[3]
+KNOWN_TICKERS = {ticker for ticker, _, _ in VN30_DEMO_UNIVERSE}
 
 
 def create_app(*, repo_root: str | Path = REPO_ROOT) -> FastAPI:
@@ -92,6 +100,37 @@ def create_app(*, repo_root: str | Path = REPO_ROOT) -> FastAPI:
     @app.get("/api/report-preview")
     def report_preview(ticker: str = "VCB") -> JSONResponse:
         return JSONResponse(build_report_preview(ticker=ticker, repo_root=str(repo_root)))
+
+    @app.get("/api/forecast-artifacts")
+    def forecast_artifacts() -> JSONResponse:
+        return JSONResponse(discover_forecast_chart_artifacts(repo_root=str(repo_root)))
+
+    @app.get("/api/forecast-chart")
+    def forecast_chart(ticker: str = "VCB", horizon: str | None = None) -> JSONResponse:
+        if ticker.strip().upper() not in KNOWN_TICKERS:
+            return JSONResponse(
+                {"available": False, "reason": "unknown_ticker", "ticker": ticker.strip().upper()},
+                status_code=404,
+            )
+        return JSONResponse(build_forecast_chart_data(ticker=ticker, horizon=horizon, repo_root=str(repo_root)))
+
+    @app.get("/api/forecast-accuracy-timeline")
+    def forecast_accuracy_timeline(ticker: str = "VCB", horizon: str | None = None) -> JSONResponse:
+        if ticker.strip().upper() not in KNOWN_TICKERS:
+            return JSONResponse(
+                {"available": False, "reason": "unknown_ticker", "ticker": ticker.strip().upper()},
+                status_code=404,
+            )
+        return JSONResponse(build_forecast_accuracy_timeline(ticker=ticker, horizon=horizon, repo_root=str(repo_root)))
+
+    @app.get("/api/horizon-comparison")
+    def horizon_comparison(ticker: str = "VCB") -> JSONResponse:
+        if ticker.strip().upper() not in KNOWN_TICKERS:
+            return JSONResponse(
+                {"available": False, "reason": "unknown_ticker", "ticker": ticker.strip().upper()},
+                status_code=404,
+            )
+        return JSONResponse(build_horizon_comparison_chart(ticker=ticker, repo_root=str(repo_root)))
 
     @app.get("/api/demo-stock")
     def demo_stock(ticker: str = "VCB") -> JSONResponse:

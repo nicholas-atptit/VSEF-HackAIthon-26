@@ -67,18 +67,23 @@ def test_vn30_universe_contains_exactly_30_cards_with_required_fields():
 def test_ticker_profile_command_and_report_preview_work():
     profile = build_ticker_terminal_profile("VCB")
     command = build_terminal_command_response("VCB DIAG")
+    chart_command = build_terminal_command_response("VCB CHART")
     report = build_report_preview("VCB")
 
     assert profile["ticker"] == "VCB"
     assert profile["company"] == "Vietcombank"
     assert profile["forecast_diagnostic_summary"]["release_status"] == "forecast_release_blocked_below_60pct"
     assert profile["engine_evidence_summary"]["generated_specs"] == 77850
+    assert "forecast_chart_status" in profile
+    assert "horizon_comparison" in profile
     assert command["command_status"] == "completed"
     assert command["payload"]["ticker"] == "VCB"
     assert command["payload"]["mode"] == "DIAG"
+    assert chart_command["payload"]["mode"] == "CHART"
     assert report["scope"] == "VCB"
     assert report["writes_files_by_default"] is False
     assert report["export_root_if_enabled"] == ".tmp_web_ui_demo"
+    assert "forecast_chart_summary" in report
 
 
 def test_summary_contains_core_terminal_evidence():

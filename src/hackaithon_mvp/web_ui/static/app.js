@@ -2,6 +2,10 @@ const state = {
   vn30: null,
   selectedTicker: "VCB",
   selectedProfile: null,
+  selectedHorizon: null,
+  selectedChart: null,
+  selectedTimeline: null,
+  selectedHorizonComparison: null,
   activeTab: "Overview",
   activeModule: "vn30",
 };
@@ -101,6 +105,208 @@ function metricBox(label, value) {
   return `<div class="metric-box"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
+function formatMetric(value) {
+  if (value === null || value === undefined) return "n/a";
+  if (typeof value === "number") return value > 1 ? value.toLocaleString() : `${(value * 100).toFixed(2)}%`;
+  return String(value);
+}
+
+function directionLabel(value) {
+  if (value === 1) return "Predicted up";
+  if (value === -1) return "Predicted down";
+  if (value === 0) return "Abstained";
+  return "Evidence missing";
+}
+
+function renderForecastUnavailable(payload) {
+  return `
+    <section class="forecast-panel unavailable-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">ForecastChartUnavailablePanel</p>
+          <h3>Forecast evidence chart</h3>
+        </div>
+        <span class="status-pill status-warn">Evidence missing</span>
+      </div>
+      <p class="chart-subtitle">Local forecast-vs-actual rows only. Human review required.</p>
+      <p class="callout warning">Forecast chart unavailable — evidence missing</p>
+      <p class="muted">Reason: ${payload?.reason || "row_level_forecast_evidence_missing"}. No row-level timeline is fabricated.</p>
+    </section>
+  `;
+}
+
+function renderPriceOrHitMissChart(payload) {
+  if (!payload?.available) return renderForecastUnavailable(payload);
+  const points = payload.points || [];
+  const priced = points.filter((point) => typeof point.actual_close === "number");
+  if (!points.length) return renderForecastUnavailable({ reason: "row_level_forecast_evidence_missing" });
+
+  if (priced.length) {
+    const width = 680;
+    const height = 180;
+    const pad = 22;
+    const closes = priced.map((point) => point.actual_close);
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const spread = max - min || 1;
+    const x = (index) => pad + (index / Math.max(priced.length - 1, 1)) * (width - pad * 2);
+    const y = (value) => height - pad - ((value - min) / spread) * (height - pad * 2);
+    const path = priced.map((point, index) => `${index === 0 ? "M" : "L"} ${x(index).toFixed(1)} ${y(point.actual_close).toFixed(1)}`).join(" ");
+    const markers = priced
+      .map((point, index) => {
+        const cls = point.correct === true ? "marker-correct" : point.correct === false ? "marker-incorrect" : "marker-missing";
+        return `<circle class="${cls}" cx="${x(index).toFixed(1)}" cy="${y(point.actual_close).toFixed(1)}" r="4"><title>${point.timestamp}: ${directionLabel(point.predicted_direction)}</title></circle>`;
+      })
+      .join("");
+    return `
+      <svg class="forecast-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Actual close with correctness markers">
+        <path class="axis-line" d="M ${pad} ${height - pad} H ${width - pad}" />
+        <path class="price-line" d="${path}" />
+        ${markers}
+      </svg>
+    `;
+  }
+
+  return `
+    <div class="hitmiss-strip" role="img" aria-label="Forecast correctness strip">
+      ${points
+        .map((point) => {
+          const cls = point.correct === true ? "correct" : point.correct === false ? "incorrect" : "missing";
+          const label = point.correct === true ? "Correct" : point.correct === false ? "Incorrect" : "Abstained";
+          return `<span class="${cls}" title="${point.timestamp}: ${label}; ${directionLabel(point.predicted_direction)}"></span>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderForecastChartPanel(payload) {
+  if (!payload?.available) return renderForecastUnavailable(payload);
+  const metrics = payload.metrics || {};
+  return `
+    <section class="forecast-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">ForecastChartPanel</p>
+          <h3>Forecast evidence chart</h3>
+        </div>
+        <span class="status-pill status-safe">${payload.horizon || "local rows"}</span>
+      </div>
+      <p class="chart-subtitle">Local forecast-vs-actual rows only. Human review required.</p>
+      <div class="workspace-metrics chart-metrics">
+        ${metricBox("Rows", metrics.rows)}
+        ${metricBox("Accuracy", formatMetric(metrics.accuracy))}
+        ${metricBox("Balanced accuracy", formatMetric(metrics.balanced_accuracy))}
+        ${metricBox("MCC", formatMetric(metrics.mcc))}
+      </div>
+      ${renderPriceOrHitMissChart(payload)}
+      <div class="legend-row">
+        <span><i class="dot correct"></i>Correct</span>
+        <span><i class="dot incorrect"></i>Incorrect</span>
+        <span><i class="dot missing"></i>Abstained / Evidence missing</span>
+        <span>${payload.source_artifact}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderAccuracyTimelinePanel(payload) {
+  if (!payload?.available) return "";
+  const timeline = payload.timeline || [];
+  if (!timeline.length) return "";
+  const width = 680;
+  const height = 132;
+  const pad = 18;
+  const x = (index) => pad + (index / Math.max(timeline.length - 1, 1)) * (width - pad * 2);
+  const y = (value) => height - pad - ((value ?? 0) * (height - pad * 2));
+  const path = timeline
+    .filter((point) => typeof point.cumulative_accuracy === "number")
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${x(index).toFixed(1)} ${y(point.cumulative_accuracy).toFixed(1)}`)
+    .join(" ");
+  return `
+    <section class="forecast-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">AccuracyTimelinePanel</p>
+          <h3>Accuracy timeline</h3>
+        </div>
+        <span class="status-pill status-warn">review required</span>
+      </div>
+      <svg class="forecast-svg compact-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Cumulative accuracy timeline">
+        <path class="axis-line" d="M ${pad} ${height - pad} H ${width - pad}" />
+        <path class="accuracy-line" d="${path}" />
+      </svg>
+    </section>
+  `;
+}
+
+function renderHorizonComparisonPanel(payload) {
+  const rows = payload?.horizons || [];
+  return `
+    <section class="forecast-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">HorizonComparisonPanel</p>
+          <h3>Horizon comparison</h3>
+        </div>
+        <span class="status-pill ${payload?.available ? "status-safe" : "status-warn"}">${payload?.available ? "row evidence" : "Evidence missing"}</span>
+      </div>
+      <div class="horizon-bars">
+        ${rows
+          .map((row) => {
+            const width = row.available && typeof row.balanced_accuracy === "number" ? Math.max(4, Math.round(row.balanced_accuracy * 100)) : 4;
+            return `
+              <div class="horizon-row">
+                <b>${row.horizon}</b>
+                <span class="horizon-track"><i style="width:${width}%"></i></span>
+                <em>${row.available ? `${row.rows} rows | BAcc ${formatMetric(row.balanced_accuracy)} | MCC ${formatMetric(row.mcc)}` : "Evidence missing"}</em>
+                <strong>${row.gate_status}</strong>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderForecastSourcePanel(payload) {
+  if (!payload?.available) {
+    return `
+      <section class="forecast-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Forecast source panel</p>
+            <h3>Source evidence</h3>
+          </div>
+          <span class="status-pill status-warn">Evidence missing</span>
+        </div>
+        <p class="callout warning">No row-level forecast-vs-actual artifact matched this ticker/horizon.</p>
+      </section>
+    `;
+  }
+  return `
+    <section class="forecast-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Forecast source panel</p>
+          <h3>Source evidence</h3>
+        </div>
+        <span class="status-pill status-blocked">claim blocked</span>
+      </div>
+      <table>
+        <tbody>
+          <tr><th>Source artifact</th><td>${payload.source_artifact}</td></tr>
+          <tr><th>Row count</th><td>${payload.metrics.rows}</td></tr>
+          <tr><th>Metric scope</th><td>${payload.metric_scope || "row_level_local_artifact"}</td></tr>
+          <tr><th>Chart scope</th><td>${payload.source_scope || "local row-level evidence"}</td></tr>
+          <tr><th>Claim status</th><td>Gate blocked; human review required</td></tr>
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
 function renderWorkspace(profile = state.selectedProfile) {
   if (!profile) return;
   byId("selected-title").textContent = `${profile.ticker} - ${profile.company}`;
@@ -139,7 +345,9 @@ function renderWorkspace(profile = state.selectedProfile) {
         ${metricBox("Gap to 60%", `${profile.forecast_diagnostic_summary.gap_to_60_percent_pp} pp`)}
       </div>
       <p class="callout blocked">Forecast-performance wording remains blocked by the hard 60% gate.</p>
+      <div id="diagnostics-chart-slot" class="chart-stack"></div>
     `;
+    renderChartStack("diagnostics-chart-slot", { includeTimeline: false });
   } else if (tab === "Risk") {
     body.innerHTML = `
       <table>
@@ -168,7 +376,9 @@ function renderWorkspace(profile = state.selectedProfile) {
         ${metricBox("Data-expanded attempt", "insufficient rows")}
       </div>
       <p class="callout">The framework evaluates models and blocks unsupported forecast claims.</p>
+      <div id="backtest-chart-slot" class="chart-stack"></div>
     `;
+    renderChartStack("backtest-chart-slot", { includeTimeline: true });
   } else if (tab === "Evidence") {
     body.innerHTML = `
       <div class="workspace-metrics">
@@ -214,10 +424,50 @@ function renderWorkspace(profile = state.selectedProfile) {
   }
 }
 
+function renderChartStack(targetId, { includeTimeline = true } = {}) {
+  const target = byId(targetId);
+  if (!target) return;
+  target.innerHTML =
+    renderForecastChartPanel(state.selectedChart) +
+    (includeTimeline ? renderAccuracyTimelinePanel(state.selectedTimeline) : "") +
+    renderHorizonComparisonPanel(state.selectedHorizonComparison) +
+    renderForecastSourcePanel(state.selectedChart);
+}
+
+function updateRightChartCard() {
+  const card = byId("right-chart-card");
+  if (!card) return;
+  const chart = state.selectedChart;
+  if (chart?.available) {
+    card.innerHTML = `
+      <span>Forecast evidence chart</span>
+      <strong>${chart.horizon || "local rows"} | ${chart.metrics.rows} rows</strong>
+      <em>${chart.source_artifact}</em>
+    `;
+    card.className = "claim-card safe";
+  } else {
+    card.innerHTML = `
+      <span>Forecast evidence chart</span>
+      <strong>Forecast chart unavailable — evidence missing</strong>
+      <em>${chart?.reason || "row_level_forecast_evidence_missing"}</em>
+    `;
+    card.className = "claim-card warning";
+  }
+}
+
+async function loadForecastPanels(ticker = state.selectedTicker, horizon = state.selectedHorizon) {
+  const horizonQuery = horizon ? `&horizon=${encodeURIComponent(horizon)}` : "";
+  state.selectedChart = await fetchJson(`/api/forecast-chart?ticker=${encodeURIComponent(ticker)}${horizonQuery}`);
+  state.selectedTimeline = await fetchJson(`/api/forecast-accuracy-timeline?ticker=${encodeURIComponent(ticker)}${horizonQuery}`);
+  state.selectedHorizonComparison = await fetchJson(`/api/horizon-comparison?ticker=${encodeURIComponent(ticker)}`);
+  updateRightChartCard();
+}
+
 async function selectTicker(ticker, tab = state.activeTab) {
   state.selectedTicker = ticker;
   state.activeTab = tab;
   state.selectedProfile = await fetchJson(`/api/ticker/${encodeURIComponent(ticker)}`);
+  await loadForecastPanels(ticker, state.selectedHorizon);
   renderTickerGrid(byId("ticker-filter").value);
   renderWorkspace();
   renderReviewGrid();
@@ -302,7 +552,17 @@ async function runCommand(command) {
   if (known.has(first)) {
     setModule("workspace");
     const mode = response.payload?.mode;
-    const tab = mode === "DIAG" ? "Diagnostics" : mode === "RISK" ? "Risk" : mode === "EVID" ? "Evidence" : "Overview";
+    state.selectedHorizon = response.payload?.horizon || null;
+    const tab =
+      mode === "DIAG" || mode === "CHART" || mode === "FORECAST"
+        ? "Diagnostics"
+        : mode === "BACKTEST"
+          ? "Backtest"
+          : mode === "RISK"
+            ? "Risk"
+            : mode === "EVID"
+              ? "Evidence"
+              : "Overview";
     await selectTicker(first, tab);
   } else if (response.command === "VN30") {
     setModule("vn30");

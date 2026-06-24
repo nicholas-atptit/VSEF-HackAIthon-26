@@ -58,15 +58,37 @@ def test_ticker_command_and_report_endpoints_work():
 
     ticker = client.get("/api/ticker/VCB")
     command = client.get("/api/terminal-command?cmd=VCB%20DIAG")
+    chart_command = client.get("/api/terminal-command?cmd=VCB%20CHART")
     report = client.get("/api/report-preview?ticker=VCB")
 
     assert ticker.status_code == 200
     assert command.status_code == 200
+    assert chart_command.status_code == 200
     assert report.status_code == 200
     assert ticker.json()["ticker"] == "VCB"
     assert command.json()["command_status"] == "completed"
     assert command.json()["payload"]["mode"] == "DIAG"
+    assert chart_command.json()["payload"]["mode"] == "CHART"
     assert report.json()["writes_files_by_default"] is False
+    assert "forecast_chart_summary" in report.json()
+
+
+def test_forecast_chart_endpoints_work():
+    client = _client()
+
+    artifacts = client.get("/api/forecast-artifacts")
+    chart = client.get("/api/forecast-chart?ticker=VCB&horizon=h1")
+    timeline = client.get("/api/forecast-accuracy-timeline?ticker=VCB&horizon=h1")
+    comparison = client.get("/api/horizon-comparison?ticker=VCB")
+
+    assert artifacts.status_code == 200
+    assert chart.status_code == 200
+    assert timeline.status_code == 200
+    assert comparison.status_code == 200
+    assert artifacts.json()["safe_roots_only"] is True
+    assert chart.json()["ticker"] == "VCB"
+    assert timeline.json()["ticker"] == "VCB"
+    assert comparison.json()["ticker"] == "VCB"
 
 
 def test_ui_html_renders_terminal_evidence():
@@ -82,6 +104,8 @@ def test_ui_html_renders_terminal_evidence():
     assert "60% GATE BLOCKED" in html
     assert "Within a bounded VN30 hourly absolute-direction benchmark" in html
     assert "BENCHMARK SCOPE LOCKED" in html
+    assert "Forecast evidence chart" in html
+    assert "Local forecast-vs-actual rows only" in html
 
 
 def test_ui_html_does_not_contain_action_labels_or_overclaims():
@@ -113,6 +137,10 @@ def test_endpoints_do_not_write_files_by_default(tmp_path):
     assert client.get("/api/ticker/VCB").status_code == 200
     assert client.get("/api/terminal-command?cmd=GATE").status_code == 200
     assert client.get("/api/report-preview?ticker=VCB").status_code == 200
+    assert client.get("/api/forecast-artifacts").status_code == 200
+    assert client.get("/api/forecast-chart?ticker=VCB&horizon=h1").status_code == 200
+    assert client.get("/api/forecast-accuracy-timeline?ticker=VCB&horizon=h1").status_code == 200
+    assert client.get("/api/horizon-comparison?ticker=VCB").status_code == 200
     assert not (tmp_path / ".tmp_web_ui_demo").exists()
 
 

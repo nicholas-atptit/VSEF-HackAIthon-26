@@ -655,6 +655,15 @@ Scope and boundaries:
 - shows the human-review queue and report preview workflow
 - generated snapshots remain untracked and must stay under `.tmp_web_ui_demo`
 
+Forecast chart panels:
+
+- chart panels read only local forecast-vs-actual artifacts
+- if row-level evidence is missing, the chart state is unavailable
+- charts are diagnostic evidence, not market-action cues
+- charts do not output action labels
+- charts show correctness, confidence when present, horizon comparison, and evidence source
+- the bounded 61.61% benchmark remains an exact-scope aggregate card unless matching row-level evidence exists
+
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
 
 ## Release Accuracy and Tuning Gates
