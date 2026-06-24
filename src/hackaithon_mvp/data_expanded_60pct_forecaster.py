@@ -25,23 +25,33 @@ from src.hackaithon_mvp.forecast_edge_selector import select_forecast_edge_slice
 from src.hackaithon_mvp.local_training_dataset_builder import load_discovered_ohlcv_rows
 from src.hackaithon_mvp.narrow_forecast_target_selector import select_narrow_forecast_targets
 from src.hackaithon_mvp.optional_vn_market_data_adapter import run_optional_vn_market_data_expansion
+from src.hackaithon_mvp.real_expanded_data_requirement import (
+    STATUS_AVAILABLE as STATUS_REAL_EXPANDED_AVAILABLE,
+    STATUS_REQUIRED as STATUS_EXPANDED_REQUIRED,
+    check_real_expanded_data_available,
+)
 
 
 CLAIM_BOUNDARY = {
-    "writes_only_under_tmp_data_expanded_60pct": True,
+    "writes_only_under_approved_tmp_roots": True,
     "provider_fetch_disabled_by_default": True,
     "validation_selection_only": True,
     "holdout_evaluated_once_after_selection": True,
     "hard_60pct_gate_required": True,
+    "real_expanded_data_required_by_default": True,
     "human_review_required": True,
 }
-NON_CLAIM_TEXT = "Data-expanded 60% forecaster blocks release unless fresh holdout gates pass."
+NON_CLAIM_TEXT = "Data-expanded 60% forecaster blocks release unless real expanded data and fresh holdout gates pass."
+ALLOWED_OUTPUT_ROOT_PREFIXES = (".tmp_data_expanded_60pct", ".tmp_real_expanded_60pct")
 
 
 def _output_root(path: str | Path) -> Path:
     root = Path(path)
-    if not any(part.lower().startswith(".tmp_data_expanded_60pct") for part in root.parts):
-        raise ValueError("output_root must be .tmp_data_expanded_60pct or a child path")
+    if not any(
+        any(part.lower().startswith(prefix) for prefix in ALLOWED_OUTPUT_ROOT_PREFIXES)
+        for part in root.parts
+    ):
+        raise ValueError("output_root must be .tmp_data_expanded_60pct, .tmp_real_expanded_60pct, or a child path")
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -121,6 +131,14 @@ def _discover_expanded_panel(root: Path) -> Path | None:
             if "price" in path.name.lower() or "panel" in path.name.lower() or "ohlcv" in path.name.lower():
                 candidates.append(path)
     return sorted(candidates, key=lambda item: (item.stat().st_size, str(item)), reverse=True)[0] if candidates else None
+
+
+def _provider_fetch_used(expansion: dict) -> bool:
+    return bool(expansion.get("expanded_data_available") and expansion.get("data_expansion_status") == "completed")
+
+
+def _provider_fetch_attempted(expansion: dict) -> bool:
+    return bool(expansion.get("data_fetch_enabled") and expansion.get("data_expansion_status") not in {"disabled", "disabled_by_default", "missing_required_env"})
 
 
 def _merge_targets_features(target_rows: list[dict], feature_rows: list[dict]) -> list[dict]:
@@ -347,21 +365,72 @@ def run_data_expanded_60pct_forecaster(
     max_models: int = 300,
     max_workers: int = 1,
     min_slice_rows: int = 500,
+    expanded_input: str | None = None,
+    allow_ohlcv_fallback: bool = False,
 ) -> dict:
     """Run data-expanded narrow forecast attempt and enforce the hard 60% gate."""
 
     started = time.monotonic()
     root = _output_root(output_root)
     expansion = run_optional_vn_market_data_expansion(output_root=str(root / "data"))
-    expanded_path = _discover_expanded_panel(root)
-    if expanded_path is not None:
+    expanded_path = Path(expanded_input) if expanded_input else _discover_expanded_panel(root)
+    requirement = check_real_expanded_data_available(
+        input_path=str(expanded_path) if expanded_path else None,
+        output_root=str(root),
+    )
+    if expanded_path is None and requirement.get("input_path"):
+        expanded_path = Path(str(requirement["input_path"]))
+    real_expanded_available = requirement.get("expanded_data_requirement_status") == STATUS_REAL_EXPANDED_AVAILABLE
+    if real_expanded_available and expanded_path is not None:
         bars = _load_panel(expanded_path)
         expanded_data_available = True
         data_source = str(expanded_path)
-    else:
-        bars = list(load_discovered_ohlcv_rows(repo_root="."))
+        fallback_status = "not_used"
+    elif allow_ohlcv_fallback:
+        if expanded_path is not None and expanded_path.exists():
+            bars = _load_panel(expanded_path)
+            data_source = str(expanded_path)
+        else:
+            bars = list(load_discovered_ohlcv_rows(repo_root="."))
+            data_source = "existing_local_ohlcv"
         expanded_data_available = False
-        data_source = "existing_local_ohlcv"
+        fallback_status = "fallback_only_not_expected_to_reach_60pct"
+    else:
+        status = STATUS_EXPANDED_REQUIRED
+        blocked = {
+            "forecast_status": status,
+            "forecast_release_status": status,
+            "output_root": str(root),
+            "data_source": str(expanded_path) if expanded_path else None,
+            "expanded_input": expanded_input,
+            "expanded_data_available": False,
+            "real_expanded_data_available": False,
+            "provider_fetch_used": _provider_fetch_used(expansion),
+            "provider_fetch_attempted": _provider_fetch_attempted(expansion),
+            "data_expansion": expansion,
+            "real_expanded_data_requirement": requirement,
+            "data_requirement_status": requirement.get("expanded_data_requirement_status"),
+            "ohlcv_only_fallback_blocked": True,
+            "fallback_status": "blocked_unless_allow_ohlcv_fallback",
+            "retained_rows": 0,
+            "retained_coverage": 0.0,
+            "hard_60pct_reached": False,
+            "gap_to_60pct": None,
+            "blocker": "Real expanded data is required for this 60% attempt; OHLCV-only fallback was blocked.",
+            "evidence_materialization": {
+                "materialization_status": "skipped_expanded_data_required",
+                "retained_row_count": 0,
+                "evidence_root": None,
+            },
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+            "claim_boundary": dict(CLAIM_BOUNDARY),
+            "non_claim": NON_CLAIM_TEXT,
+            "human_review_required": True,
+        }
+        _write_json(root / "data_expansion.json", _public(expansion))
+        _write_json(root / "real_expanded_data_requirement.json", _public(requirement))
+        _write_json(root / "data_expanded_60pct_forecast_summary.json", _public(blocked))
+        return blocked
     contract = validate_expanded_price_panel_schema(bars)
     targets = build_clean_direction_targets(bars, horizons=(1, 5, 10), non_overlapping=True)
     target_rows = list(targets.get("rows") or [])
@@ -376,6 +445,7 @@ def run_data_expanded_60pct_forecaster(
     selected_candidates = list(target_selection.get("allowed_target_candidates") or [])
     training_rows = _filter_to_candidates(training_rows_all, selected_candidates) if selected_candidates else []
     _write_json(root / "data_expansion.json", _public(expansion))
+    _write_json(root / "real_expanded_data_requirement.json", _public(requirement))
     _write_json(root / "expanded_data_contract.json", _public(contract))
     _write_json(root / "clean_target_summary.json", _public(targets))
     _write_json(root / "expanded_feature_summary.json", _public(features))
@@ -416,9 +486,16 @@ def run_data_expanded_60pct_forecaster(
         "forecast_release_status": status,
         "output_root": str(root),
         "data_source": data_source,
+        "expanded_input": expanded_input,
         "expanded_data_available": expanded_data_available,
-        "provider_fetch_used": expansion.get("data_fetch_enabled") and expansion.get("data_expansion_status") not in {"disabled_by_default"},
+        "real_expanded_data_available": real_expanded_available,
+        "provider_fetch_used": _provider_fetch_used(expansion),
+        "provider_fetch_attempted": _provider_fetch_attempted(expansion),
+        "fallback_status": fallback_status,
+        "ohlcv_only_fallback_blocked": False,
         "data_expansion": expansion,
+        "real_expanded_data_requirement": requirement,
+        "data_requirement_status": requirement.get("expanded_data_requirement_status"),
         "contract": contract,
         "clean_target_rows": len(target_rows),
         "clean_rows_by_horizon": targets.get("rows_by_horizon"),
@@ -487,8 +564,13 @@ def render_data_expanded_60pct_forecast_report(result: dict) -> str:
         "",
         f"Forecast release status: {result.get('forecast_release_status')}",
         f"Expanded data available: {result.get('expanded_data_available')}",
+        f"Real expanded data available: {result.get('real_expanded_data_available')}",
+        f"Data requirement status: {result.get('data_requirement_status')}",
         f"Provider fetch used: {result.get('provider_fetch_used')}",
+        f"Provider fetch attempted: {result.get('provider_fetch_attempted')}",
         f"Data source: {result.get('data_source')}",
+        f"Fallback status: {result.get('fallback_status')}",
+        f"OHLCV-only fallback blocked: {result.get('ohlcv_only_fallback_blocked')}",
         f"Clean target rows: {result.get('clean_target_rows')}",
         f"Clean rows by horizon: {result.get('clean_rows_by_horizon')}",
         f"Feature blocks generated: {result.get('feature_blocks_generated')}",
@@ -516,10 +598,15 @@ def render_data_expanded_60pct_forecast_report(result: dict) -> str:
         f"- gap to 60%: {result.get('gap_to_60pct')}",
         "",
         "Gate detail:",
-        render_60pct_gate_report(gate).rstrip(),
+        render_60pct_gate_report(gate).rstrip() if gate else "not_run_expanded_data_required",
         "",
         "Boundary:",
     ]
+    if result.get("forecast_release_status") == STATUS_EXPANDED_REQUIRED:
+        lines.append("Real expanded data is required before rerunning the hard 60% forecast gate.")
+        lines.append("OHLCV-only fallback was blocked for this attempt.")
+        lines.append(str(result.get("non_claim", NON_CLAIM_TEXT)))
+        return "\n".join(lines).rstrip() + "\n"
     if not result.get("hard_60pct_reached"):
         lines.append("Current local data remains insufficient for an honest >=60% forecast claim.")
     else:
@@ -536,6 +623,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-models", type=int, default=300)
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--min-slice-rows", type=int, default=500)
+    parser.add_argument("--expanded-input", default=None, help="Real expanded price-panel CSV/JSONL/JSON input.")
+    parser.add_argument(
+        "--allow-ohlcv-fallback",
+        action="store_true",
+        help="Explicitly allow the old OHLCV-only fallback. This is not a real expanded-data attempt.",
+    )
     parser.add_argument("--format", choices=("json", "report"), default="json")
     return parser
 
@@ -547,6 +640,8 @@ def main(argv: list[str] | None = None) -> int:
         max_models=args.max_models,
         max_workers=args.max_workers,
         min_slice_rows=args.min_slice_rows,
+        expanded_input=args.expanded_input,
+        allow_ohlcv_fallback=args.allow_ohlcv_fallback,
     )
     public = _public(result)
     if args.format == "report":

@@ -30,27 +30,41 @@ def _forecast_rows(count=650, correct_ratio=0.62):
     return rows
 
 
+def _write_expanded_panel(path, count=700):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["ticker,timestamp,open,high,low,close,volume,adjusted_close,index_return\n"]
+    for index in range(count):
+        lines.append(
+            f"AAA,2026-01-{index + 1:03d},1,2,1,{1 + index},100,{1 + index},0.001\n"
+        )
+    path.write_text("".join(lines), encoding="utf-8")
+    return path
+
+
 def test_data_expanded_forecaster_blocks_when_no_training_data(tmp_path, monkeypatch):
     import src.hackaithon_mvp.data_expanded_60pct_forecaster as forecaster
 
-    monkeypatch.setattr(forecaster, "load_discovered_ohlcv_rows", lambda repo_root=".": tuple())
-    monkeypatch.setattr(forecaster, "build_clean_direction_targets", lambda bars, horizons, non_overlapping: {"rows": [], "rows_by_horizon": {}})
-    monkeypatch.setattr(forecaster, "build_expanded_forecast_features", lambda bars: {"rows": [], "feature_blocks": [], "feature_columns": []})
-    monkeypatch.setattr(forecaster, "select_narrow_forecast_targets", lambda *args, **kwargs: {"allowed_count": 0, "exploratory_count": 0, "rejected_count": 0, "allowed_target_candidates": []})
-    monkeypatch.setattr(forecaster, "train_forecast_edge_models", lambda *args, **kwargs: {"training_status": "blocked_by_insufficient_data", "model_results": [], "attempted_model_specs": 0, "trained_model_specs": 0, "tuned_model_specs": 0})
+    monkeypatch.setattr(
+        forecaster,
+        "train_forecast_edge_models",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("fallback path should be blocked")),
+    )
 
-    result = run_data_expanded_60pct_forecaster(output_root=str(tmp_path / ".tmp_data_expanded_60pct"), max_models=1)
+    result = run_data_expanded_60pct_forecaster(output_root=str(tmp_path / ".tmp_real_expanded_60pct"), max_models=1)
     report = render_data_expanded_60pct_forecast_report(result)
 
-    assert result["forecast_release_status"] == "forecast_release_blocked_insufficient_rows"
-    assert result["evidence_materialization"]["materialization_status"] == "skipped_gate_not_passed"
+    assert result["forecast_release_status"] == "expanded_data_required_for_60pct_attempt"
+    assert result["ohlcv_only_fallback_blocked"] is True
+    assert result["evidence_materialization"]["materialization_status"] == "skipped_expanded_data_required"
     assert "Data-Expanded 60% Forecast Attempt" in report
+    assert "OHLCV-only fallback was blocked" in report
 
 
 def test_data_expanded_forecaster_materializes_only_when_gate_passes(tmp_path, monkeypatch):
     import src.hackaithon_mvp.data_expanded_60pct_forecaster as forecaster
 
     rows = _forecast_rows()
+    expanded_input = _write_expanded_panel(tmp_path / "expanded_price_panel.csv")
     monkeypatch.setattr(
         forecaster,
         "load_discovered_ohlcv_rows",
@@ -117,8 +131,60 @@ def test_data_expanded_forecaster_materializes_only_when_gate_passes(tmp_path, m
         },
     )
 
-    result = run_data_expanded_60pct_forecaster(output_root=str(tmp_path / ".tmp_data_expanded_60pct"), max_models=1, min_slice_rows=500)
+    result = run_data_expanded_60pct_forecaster(
+        output_root=str(tmp_path / ".tmp_real_expanded_60pct"),
+        expanded_input=str(expanded_input),
+        max_models=1,
+        min_slice_rows=500,
+    )
 
     assert result["selective_60pct_gate_passed"] is True
+    assert result["real_expanded_data_available"] is True
     assert result["evidence_materialization"]["materialization_status"] == "completed"
-    assert (tmp_path / ".tmp_data_expanded_60pct" / "evidence" / "forecast_actual_rows.jsonl").exists()
+    assert (tmp_path / ".tmp_real_expanded_60pct" / "evidence" / "forecast_actual_rows.jsonl").exists()
+
+
+def test_data_expanded_forecaster_explicit_fallback_is_labeled(tmp_path, monkeypatch):
+    import src.hackaithon_mvp.data_expanded_60pct_forecaster as forecaster
+
+    monkeypatch.setattr(forecaster, "load_discovered_ohlcv_rows", lambda repo_root=".": tuple())
+    monkeypatch.setattr(
+        forecaster,
+        "build_clean_direction_targets",
+        lambda bars, horizons, non_overlapping: {"rows": [], "rows_by_horizon": {}},
+    )
+    monkeypatch.setattr(
+        forecaster,
+        "build_expanded_forecast_features",
+        lambda bars: {"rows": [], "feature_blocks": [], "feature_columns": []},
+    )
+    monkeypatch.setattr(
+        forecaster,
+        "select_narrow_forecast_targets",
+        lambda *args, **kwargs: {
+            "allowed_count": 0,
+            "exploratory_count": 0,
+            "rejected_count": 0,
+            "allowed_target_candidates": [],
+        },
+    )
+    monkeypatch.setattr(
+        forecaster,
+        "train_forecast_edge_models",
+        lambda *args, **kwargs: {
+            "training_status": "blocked_by_insufficient_data",
+            "model_results": [],
+            "attempted_model_specs": 0,
+            "trained_model_specs": 0,
+            "tuned_model_specs": 0,
+        },
+    )
+
+    result = run_data_expanded_60pct_forecaster(
+        output_root=str(tmp_path / ".tmp_real_expanded_60pct"),
+        allow_ohlcv_fallback=True,
+        max_models=1,
+    )
+
+    assert result["fallback_status"] == "fallback_only_not_expected_to_reach_60pct"
+    assert result["ohlcv_only_fallback_blocked"] is False

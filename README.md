@@ -127,6 +127,7 @@ Current scope:
 | 60% Forecast Release Gate | Implemented | Blocks forecast-performance release below 60% final holdout or retained-holdout accuracy/balanced accuracy with row, coverage, baseline, MCC, and data-quality checks |
 | 60% Forecast Edge Search | Implemented | Runs focused clean local search with validation-only confidence gating and returns blocked release status when no honest 60% final holdout result is found |
 | Data-Expanded 60% Forecast Attempt | Implemented | Validates expanded local data schema, keeps provider fetch disabled by default, builds expanded non-leaky features, narrows target slices, and enforces the hard 60% gate |
+| Real Expanded Data Requirement | Implemented | Blocks new data-expanded 60% attempts unless a local expanded panel has OHLCV plus at least two additional context groups |
 | Risk V3 Red-team Stress Suite | Implemented | Tests zero volume, duplicate/stale rows, repeated OHLCV, extreme ranges, context gaps, and review blocking |
 | Offline Gateway Dirty-input Tests | Implemented | Tests alias columns, malformed local files, invalid OHLCV rows, mixed tickers, no-write default, and explicit evidence writes |
 | DAG Backtest Robustness Tests | Implemented | Tests tiny fixtures, insufficient bars, invalid payload isolation, human review counts, and optional actual-row evaluation |
@@ -433,8 +434,43 @@ Examples:
 
 ```powershell
 python -m src.hackaithon_mvp.data_expanded_forecast_contract --input path\to\expanded_price_panel.csv --format report
-python -m src.hackaithon_mvp.optional_vn_market_data_adapter --output-root .tmp_data_expanded_60pct\data --format report
-python -m src.hackaithon_mvp.data_expanded_60pct_forecaster --output-root .tmp_data_expanded_60pct --max-models 300 --max-workers 1 --min-slice-rows 500 --format report
+python -m src.hackaithon_mvp.optional_vn_market_data_adapter --output-root .tmp_real_expanded_60pct\data --format report
+python -m src.hackaithon_mvp.data_expanded_60pct_forecaster --expanded-input path\to\expanded_price_panel.csv --output-root .tmp_real_expanded_60pct --max-models 300 --max-workers 1 --min-slice-rows 500 --format report
+```
+
+## Real Expanded Data Requirement for 60% Forecast Gate
+
+The previous fallback-only data-expanded attempt did not use provider data and did not have an expanded local input panel. It fell back to existing local OHLCV and reached:
+
+- retained balanced accuracy: 0.563179
+- retained accuracy: 0.565854
+- retained rows: 205
+- retained coverage: 0.006905
+- hard 60% release threshold: not met
+
+That fallback-only result is not accepted as a new data-expanded 60% attempt. Future 60% attempts require real expanded data, not OHLCV-only fallback.
+
+A panel counts as real expanded data only when it has required OHLCV columns plus at least two additional context groups, such as adjusted prices, turnover or value, market cap, foreign flow, sector or industry, index context, sector return, news/event context, or intraday timestamp granularity.
+
+If no real expanded input is supplied and provider expansion is disabled or unavailable, the forecaster returns:
+
+```text
+expanded_data_required_for_60pct_attempt
+```
+
+OHLCV-only fallback can only run with `--allow-ohlcv-fallback`, and that mode is labeled:
+
+```text
+fallback_only_not_expected_to_reach_60pct
+```
+
+With no real expanded data available, forecast release remains blocked.
+
+Examples:
+
+```powershell
+python -m src.hackaithon_mvp.real_expanded_data_requirement --output-root .tmp_real_expanded_60pct --format report
+python -m src.hackaithon_mvp.data_expanded_60pct_forecaster --output-root .tmp_real_expanded_60pct --max-models 300 --max-workers 1 --min-slice-rows 500 --format report
 ```
 
 ## Forecast Edge Pipeline
@@ -537,7 +573,7 @@ python -m pytest tests/hackaithon_mvp -q --basetemp .pytest-tmp
 Latest local result:
 
 ```text
-799 passed
+804 passed
 ```
 
 Accuracy optimizer and policy-registry results are diagnostic policy simulations over existing local rows. They are validation-split and coverage-dependent. They do not train models, run inference, rerun benchmarks, fetch live data, or establish production performance.
